@@ -1,0 +1,31 @@
+{
+  "title": "SkinMatch",
+  "subtitle": "내 피부에 딱 맞는 파운데이션 찾기",
+  "nav": {
+    "analyze": "피부 분석",
+    "admin": "관리자"
+  },
+  "home": {
+    "description": "CIELAB 색공간 기반 과학적 피부톤 분석으로 가장 정확한 파운데이션 색상을 추천해드립니다.",
+    "step1": "사진 촬영",
+    "step1_desc": "컬러체커와 함께 통제된 환경에서 얼굴 사진을 촬영합니다",
+    "step2": "피부톤 분석",
+    "step2_desc": "컬러체커로 색 보정 후 CIELAB 색공간에서 정밀하게 피부색을 측정합니다",
+    "step3": "맞춤 추천",
+    "step3_desc": "CIEDE2000 색차 공식으로 가장 유사한 파운데이션을 추천합니다",
+    "start": "피부 분석 시작하기"
+  },
+  "scan": {
+    "title": "피부톤 분석",
+    "upload_prompt": "컬러체커와 함께 촬영한 얼굴 사진을 업로드하세요",
+    "analyzing": "피부톤을 분석하고 있습니다..."
+  },
+  "result": {
+    "skin_title": "내 피부톤 분석 결과",
+    "recommend_title": "추천 파운데이션",
+    "identical": "거의 동일",
+    "very_similar": "매우 유사",
+    "similar": "유사",
+    "different": "차이 있음"
+  }
+}

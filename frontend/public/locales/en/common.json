@@ -1,0 +1,31 @@
+{
+  "title": "SkinMatch",
+  "subtitle": "Find Your Perfect Foundation Match",
+  "nav": {
+    "analyze": "Skin Analysis",
+    "admin": "Admin"
+  },
+  "home": {
+    "description": "Scientific skin tone analysis based on CIELAB color space for the most accurate foundation recommendations.",
+    "step1": "Take Photo",
+    "step1_desc": "Take a face photo with a color checker under controlled lighting",
+    "step2": "Skin Analysis",
+    "step2_desc": "Color-corrected measurement of skin tone in CIELAB color space",
+    "step3": "Recommendations",
+    "step3_desc": "CIEDE2000 color difference formula finds the closest foundation match",
+    "start": "Start Skin Analysis"
+  },
+  "scan": {
+    "title": "Skin Tone Analysis",
+    "upload_prompt": "Upload a face photo taken with a color checker",
+    "analyzing": "Analyzing your skin tone..."
+  },
+  "result": {
+    "skin_title": "Your Skin Tone Analysis",
+    "recommend_title": "Recommended Foundations",
+    "identical": "Near Identical",
+    "very_similar": "Very Similar",
+    "similar": "Similar",
+    "different": "Noticeable Difference"
+  }
+}
