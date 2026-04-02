@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiAuthPost, apiAuthDelete } from "@/lib/api";
-import type { Foundation } from "@/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiGet, apiAuthPost, apiAuthDelete, apiAuthPostFormData } from "@/lib/api";
+import {
+  COLORCHECKER_REFERENCE,
+  type MeasuredPatch,
+  buildCheckerPatches,
+} from "@/lib/colorChecker";
+import type { Foundation, FoundationAnalysisResult } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -15,7 +20,7 @@ export default function AdminPage() {
   const [brands, setBrands] = useState<string[]>([]);
   const [filterBrand, setFilterBrand] = useState<string>("");
 
-  // New foundation form
+  // New foundation form (manual)
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     brand: "",
@@ -28,6 +33,26 @@ export default function AdminPage() {
     hex_color: "#000000",
     undertone: "NEUTRAL",
   });
+
+  // Photo analysis form
+  const [showPhotoForm, setShowPhotoForm] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoMeta, setPhotoMeta] = useState({
+    brand: "",
+    product_name: "",
+    shade_name: "",
+    shade_code: "",
+  });
+  const [analysisResult, setAnalysisResult] = useState<FoundationAnalysisResult | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
+  // ColorChecker for photo analysis
+  const [checkerPatches, setCheckerPatches] = useState<MeasuredPatch[]>([]);
+  const [selectingPatch, setSelectingPatch] = useState<number | null>(null);
+  const photoCanvasRef = useRef<HTMLCanvasElement>(null);
+  const photoImgRef = useRef<HTMLImageElement>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +97,147 @@ export default function AdminPage() {
     if (!token || !confirm("정말 삭제하시겠습니까?")) return;
     await apiAuthDelete(`/api/foundations/${id}`, token);
     loadData();
+  };
+
+  // Photo analysis handlers
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setPhotoError("파일 크기는 20MB 이하여야 합니다.");
+      return;
+    }
+    setPhotoError(null);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setAnalysisResult(null);
+    setCheckerPatches([]);
+    setSelectingPatch(null);
+  };
+
+  const handlePhotoImageLoad = () => {
+    const img = photoImgRef.current;
+    const canvas = photoCanvasRef.current;
+    if (!img || !canvas) return;
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+  };
+
+  const handlePhotoCanvasClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (selectingPatch === null) return;
+      const canvas = photoCanvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = Math.round((e.clientX - rect.left) * scaleX);
+      const y = Math.round((e.clientY - rect.top) * scaleY);
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const size = 5;
+      const data = ctx.getImageData(
+        Math.max(0, x - size),
+        Math.max(0, y - size),
+        size * 2,
+        size * 2
+      );
+      let rSum = 0, gSum = 0, bSum = 0, count = 0;
+      for (let i = 0; i < data.data.length; i += 4) {
+        rSum += data.data[i];
+        gSum += data.data[i + 1];
+        bSum += data.data[i + 2];
+        count++;
+      }
+
+      const measured: MeasuredPatch = {
+        patchIndex: selectingPatch,
+        measuredRgb: [
+          Math.round(rSum / count),
+          Math.round(gSum / count),
+          Math.round(bSum / count),
+        ],
+      };
+
+      setCheckerPatches((prev) => {
+        const filtered = prev.filter((p) => p.patchIndex !== selectingPatch);
+        return [...filtered, measured];
+      });
+      setSelectingPatch(null);
+    },
+    [selectingPatch]
+  );
+
+  const handleAnalyzeSwatch = async () => {
+    if (!photoFile || !token) return;
+    setAnalyzing(true);
+    setPhotoError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("image", photoFile);
+
+      if (checkerPatches.length >= 3) {
+        const patches = buildCheckerPatches(checkerPatches);
+        formData.append("checker_patches", JSON.stringify(patches));
+      }
+
+      const result = await apiAuthPostFormData<FoundationAnalysisResult>(
+        "/api/foundations/analyze-swatch",
+        formData,
+        token
+      );
+      setAnalysisResult(result);
+    } catch (err: any) {
+      setPhotoError(err.message || "분석 중 오류가 발생했습니다.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleSaveFromPhoto = async () => {
+    if (!photoFile || !token || !analysisResult) return;
+    if (!photoMeta.brand || !photoMeta.shade_name) {
+      setPhotoError("브랜드와 색상명은 필수 입력 항목입니다.");
+      return;
+    }
+    setPhotoError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("image", photoFile);
+      formData.append("brand", photoMeta.brand);
+      formData.append("product_name", photoMeta.product_name);
+      formData.append("shade_name", photoMeta.shade_name);
+      formData.append("shade_code", photoMeta.shade_code);
+
+      if (checkerPatches.length >= 3) {
+        const patches = buildCheckerPatches(checkerPatches);
+        formData.append("checker_patches", JSON.stringify(patches));
+      }
+
+      await apiAuthPostFormData<Foundation>(
+        "/api/foundations/from-photo",
+        formData,
+        token
+      );
+
+      // Reset form and reload
+      setShowPhotoForm(false);
+      setPhotoFile(null);
+      setPhotoPreview(null);
+      setAnalysisResult(null);
+      setCheckerPatches([]);
+      setPhotoMeta({ brand: "", product_name: "", shade_name: "", shade_code: "" });
+      loadData();
+    } catch (err: any) {
+      setPhotoError(err.message || "저장 중 오류가 발생했습니다.");
+    }
   };
 
   if (!token) {
@@ -122,14 +288,237 @@ export default function AdminPage() {
             ))}
           </select>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              setShowPhotoForm(!showPhotoForm);
+              setShowForm(false);
+            }}
+            className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm hover:bg-indigo-700"
+          >
+            사진으로 추가
+          </button>
+          <button
+            onClick={() => {
+              setShowForm(!showForm);
+              setShowPhotoForm(false);
+            }}
             className="bg-rose-600 text-white px-4 py-1.5 rounded text-sm hover:bg-rose-700"
           >
-            + 새 제품 추가
+            + 수동 추가
           </button>
         </div>
       </div>
 
+      {/* Photo Analysis Form */}
+      {showPhotoForm && (
+        <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
+          <h2 className="text-lg font-semibold mb-4">사진으로 파운데이션 색상 분석</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            흰 종이에 파운데이션을 바르고 컬러체커와 함께 촬영한 사진을 업로드하세요.
+          </p>
+
+          {photoError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">
+              {photoError}
+            </div>
+          )}
+
+          {/* Product metadata */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <input
+              placeholder="브랜드 *"
+              value={photoMeta.brand}
+              onChange={(e) => setPhotoMeta({ ...photoMeta, brand: e.target.value })}
+              className="border rounded px-3 py-2 text-sm"
+              required
+            />
+            <input
+              placeholder="제품명"
+              value={photoMeta.product_name}
+              onChange={(e) => setPhotoMeta({ ...photoMeta, product_name: e.target.value })}
+              className="border rounded px-3 py-2 text-sm"
+            />
+            <input
+              placeholder="색상명 *"
+              value={photoMeta.shade_name}
+              onChange={(e) => setPhotoMeta({ ...photoMeta, shade_name: e.target.value })}
+              className="border rounded px-3 py-2 text-sm"
+              required
+            />
+            <input
+              placeholder="호수 (예: 21호)"
+              value={photoMeta.shade_code}
+              onChange={(e) => setPhotoMeta({ ...photoMeta, shade_code: e.target.value })}
+              className="border rounded px-3 py-2 text-sm"
+            />
+          </div>
+
+          {/* Image upload */}
+          {!photoPreview && (
+            <label className="block border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-indigo-400 transition mb-4">
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+              <span className="text-gray-500 text-sm">
+                클릭하여 사진 선택 (JPEG/PNG, 최대 20MB)
+              </span>
+            </label>
+          )}
+
+          {/* Image preview + ColorChecker calibration */}
+          {photoPreview && (
+            <div className="grid lg:grid-cols-2 gap-4 mb-4">
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  {selectingPatch !== null
+                    ? `"${COLORCHECKER_REFERENCE[selectingPatch].name}" 패치를 사진에서 클릭하세요`
+                    : "컬러체커 패치를 클릭하여 보정할 수 있습니다 (선택사항)"}
+                </p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  ref={photoImgRef}
+                  src={photoPreview}
+                  alt="파운데이션 사진"
+                  className="hidden"
+                  onLoad={handlePhotoImageLoad}
+                />
+                <canvas
+                  ref={photoCanvasRef}
+                  className="max-w-full border rounded cursor-crosshair"
+                  style={{ maxHeight: "350px" }}
+                  onClick={handlePhotoCanvasClick}
+                />
+                <button
+                  onClick={() => {
+                    setPhotoFile(null);
+                    setPhotoPreview(null);
+                    setAnalysisResult(null);
+                    setCheckerPatches([]);
+                    setSelectingPatch(null);
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600 mt-1"
+                >
+                  다른 사진 선택
+                </button>
+              </div>
+
+              {/* ColorChecker patch grid */}
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  컬러체커 패치 선택 ({checkerPatches.length}/24)
+                </p>
+                <div className="grid grid-cols-6 gap-1.5 max-h-64 overflow-y-auto">
+                  {COLORCHECKER_REFERENCE.map((patch, idx) => {
+                    const measured = checkerPatches.find((p) => p.patchIndex === idx);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectingPatch(idx)}
+                        className={`p-1.5 rounded text-xs border transition ${
+                          selectingPatch === idx
+                            ? "border-indigo-500 bg-indigo-50"
+                            : measured
+                            ? "border-green-500 bg-green-50"
+                            : "border-gray-200 hover:border-gray-400"
+                        }`}
+                        title={patch.name}
+                      >
+                        <div className="text-center truncate text-[10px]">{patch.name}</div>
+                        {measured && (
+                          <div
+                            className="w-5 h-5 rounded mx-auto mt-0.5"
+                            style={{
+                              backgroundColor: `rgb(${measured.measuredRgb.join(",")})`,
+                            }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {checkerPatches.length > 0 && checkerPatches.length < 3 && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    최소 3개 패치를 선택해야 보정이 적용됩니다.
+                  </p>
+                )}
+                {checkerPatches.length >= 3 && (
+                  <p className="text-xs text-green-600 mt-2">
+                    {checkerPatches.length}개 패치 선택됨 - 색 보정이 적용됩니다.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Analysis result preview */}
+          {analysisResult && (
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <h3 className="text-sm font-semibold mb-3">분석 결과 미리보기</h3>
+              <div className="flex items-center gap-4">
+                <div
+                  className="w-16 h-16 rounded-lg shadow-inner border"
+                  style={{ backgroundColor: analysisResult.hex_color }}
+                />
+                <div className="text-sm">
+                  <p className="font-mono">
+                    L*={analysisResult.L_value} a*={analysisResult.a_value} b*={analysisResult.b_value}
+                  </p>
+                  <p className="text-gray-500">
+                    HEX: {analysisResult.hex_color} | 언더톤: {analysisResult.undertone}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex gap-3">
+            {photoFile && !analysisResult && (
+              <button
+                onClick={handleAnalyzeSwatch}
+                disabled={analyzing}
+                className="bg-indigo-600 text-white px-5 py-2 rounded text-sm hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {analyzing ? "분석 중..." : "색상 분석"}
+              </button>
+            )}
+            {analysisResult && (
+              <>
+                <button
+                  onClick={handleSaveFromPhoto}
+                  className="bg-green-600 text-white px-5 py-2 rounded text-sm hover:bg-green-700"
+                >
+                  DB에 저장
+                </button>
+                <button
+                  onClick={handleAnalyzeSwatch}
+                  disabled={analyzing}
+                  className="bg-gray-200 text-gray-700 px-5 py-2 rounded text-sm hover:bg-gray-300 disabled:opacity-50"
+                >
+                  {analyzing ? "분석 중..." : "다시 분석"}
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => {
+                setShowPhotoForm(false);
+                setPhotoFile(null);
+                setPhotoPreview(null);
+                setAnalysisResult(null);
+                setCheckerPatches([]);
+                setPhotoMeta({ brand: "", product_name: "", shade_name: "", shade_code: "" });
+              }}
+              className="text-gray-500 hover:text-gray-700 px-4 py-2 text-sm"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Form */}
       {showForm && (
         <form
           onSubmit={handleCreate}

@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.config import settings
 from app.database import Base, engine
 from app.routers import analysis, auth, foundations
 
@@ -12,6 +14,8 @@ from app.routers import analysis, auth, foundations
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Ensure upload directories exist
+    Path(settings.UPLOAD_DIR, "swatches").mkdir(parents=True, exist_ok=True)
     yield
 
 
@@ -29,6 +33,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 
 app.include_router(auth.router)
 app.include_router(analysis.router)
