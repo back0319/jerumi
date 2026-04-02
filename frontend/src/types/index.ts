@@ -34,3 +34,11 @@ export interface ColorCheckerPatch {
   reference_lab: [number, number, number];
   measured_rgb: [number, number, number];
 }
+
+export interface FoundationAnalysisResult {
+  L_value: number;
+  a_value: number;
+  b_value: number;
+  hex_color: string;
+  undertone: string;
+}

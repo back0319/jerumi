@@ -12,8 +12,9 @@ import {
   buildCheckerPatches,
 } from "@/lib/colorChecker";
 import type { AnalysisResponse } from "@/types";
+import CameraCapture from "@/components/CameraCapture";
 
-type Step = "upload" | "checker" | "analyzing" | "done";
+type Step = "upload" | "camera" | "checker" | "analyzing" | "done";
 
 export default function ScanPage() {
   const [step, setStep] = useState<Step>("upload");
@@ -41,6 +42,10 @@ export default function ScanPage() {
     []
   );
 
+  const processImageOnCanvas = useCallback((canvas: HTMLCanvasElement) => {
+    loadFaceMeshAndExtract(canvas);
+  }, []);
+
   const handleImageLoad = useCallback(() => {
     const img = imgRef.current;
     const canvas = canvasRef.current;
@@ -52,9 +57,33 @@ export default function ScanPage() {
     if (!ctx) return;
     ctx.drawImage(img, 0, 0);
 
-    // Try to run MediaPipe Face Mesh to auto-extract skin pixels
-    loadFaceMeshAndExtract(canvas);
-  }, []);
+    processImageOnCanvas(canvas);
+  }, [processImageOnCanvas]);
+
+  const handleCameraCapture = useCallback(
+    (dataUrl: string) => {
+      setError(null);
+      setImageUrl(dataUrl);
+
+      // Load the captured image onto the canvas
+      const img = new Image();
+      img.onload = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        processImageOnCanvas(canvas);
+      };
+      img.src = dataUrl;
+
+      // Switch away from camera step (will go to checker after face mesh)
+      setStep("upload"); // temporarily show loading state
+    },
+    [processImageOnCanvas]
+  );
 
   const loadFaceMeshAndExtract = async (canvas: HTMLCanvasElement) => {
     try {
@@ -94,14 +123,12 @@ export default function ScanPage() {
 
       await faceMesh.send({ image: canvas });
     } catch (err) {
-      // Fallback: let user manually proceed without face mesh
       console.warn("MediaPipe Face Mesh 로딩 실패, 전체 이미지 중앙 영역 사용:", err);
       fallbackExtract(canvas);
     }
   };
 
   const fallbackExtract = (canvas: HTMLCanvasElement) => {
-    // Use center 30% of image as rough skin region
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const w = canvas.width;
@@ -137,7 +164,6 @@ export default function ScanPage() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // Sample 5x5 area around click point
       const size = 5;
       const data = ctx.getImageData(
         Math.max(0, x - size),
@@ -183,7 +209,6 @@ export default function ScanPage() {
       const patches =
         checkerPatches.length >= 3 ? buildCheckerPatches(checkerPatches) : null;
 
-      // Subsample if too many pixels (for performance)
       let pixels = skinPixels;
       if (pixels.length > 10000) {
         const step = Math.ceil(pixels.length / 10000);
@@ -204,6 +229,16 @@ export default function ScanPage() {
     }
   };
 
+  const resetAll = () => {
+    setStep("upload");
+    setImageUrl(null);
+    setSkinPixels(null);
+    setCheckerPatches([]);
+    setSelectingPatch(null);
+    setResult(null);
+    setError(null);
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold mb-6">피부톤 분석</h1>
@@ -214,8 +249,8 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* Step 1: Upload */}
-      {step === "upload" && (
+      {/* Step 1: Upload or Camera */}
+      {step === "upload" && !imageUrl && (
         <div className="bg-white rounded-xl p-8 shadow-sm">
           <h2 className="text-lg font-semibold mb-4">
             컬러체커와 함께 촬영한 얼굴 사진을 업로드하세요
@@ -224,32 +259,68 @@ export default function ScanPage() {
             통제된 조명 환경에서 컬러체커를 들고 촬영한 정면 얼굴 사진을 사용하면
             가장 정확한 결과를 얻을 수 있습니다.
           </p>
-          <label className="block border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-rose-400 transition">
-            <input
-              type="file"
-              accept="image/jpeg,image/png"
-              className="hidden"
-              onChange={handleImageUpload}
-            />
-            <span className="text-gray-500">
-              클릭하여 이미지 선택 (JPEG/PNG, 최대 10MB)
-            </span>
-          </label>
 
-          {imageUrl && (
-            <div className="mt-6">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                ref={imgRef}
-                src={imageUrl}
-                alt="업로드된 얼굴"
-                className="max-w-full max-h-96 mx-auto rounded"
-                onLoad={handleImageLoad}
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Upload option */}
+            <label className="block border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-rose-400 transition">
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={handleImageUpload}
               />
-              <canvas ref={canvasRef} className="hidden" />
-            </div>
-          )}
+              <div className="text-4xl mb-3">📁</div>
+              <span className="text-gray-700 font-medium block mb-1">사진 업로드</span>
+              <span className="text-gray-400 text-sm">
+                JPEG/PNG, 최대 10MB
+              </span>
+            </label>
+
+            {/* Camera option */}
+            <button
+              onClick={() => setStep("camera")}
+              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-rose-400 transition"
+            >
+              <div className="text-4xl mb-3">📷</div>
+              <span className="text-gray-700 font-medium block mb-1">카메라 촬영</span>
+              <span className="text-gray-400 text-sm">
+                카메라로 직접 촬영
+              </span>
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Upload preview (loading face mesh) */}
+      {step === "upload" && imageUrl && (
+        <div className="bg-white rounded-xl p-8 shadow-sm">
+          <div className="text-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              ref={imgRef}
+              src={imageUrl}
+              alt="업로드된 얼굴"
+              className="max-w-full max-h-96 mx-auto rounded"
+              onLoad={handleImageLoad}
+            />
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="mt-4">
+              <div className="animate-spin w-8 h-8 border-4 border-rose-200 border-t-rose-600 rounded-full mx-auto mb-2" />
+              <p className="text-sm text-gray-500">얼굴을 인식하고 있습니다...</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step: Camera */}
+      {step === "camera" && (
+        <>
+          <CameraCapture
+            onCapture={handleCameraCapture}
+            onCancel={() => setStep("upload")}
+          />
+          <canvas ref={canvasRef} className="hidden" />
+        </>
       )}
 
       {/* Step 2: Color Checker Calibration */}
@@ -326,12 +397,7 @@ export default function ScanPage() {
                 : "보정 없이 분석"}
             </button>
             <button
-              onClick={() => {
-                setStep("upload");
-                setImageUrl(null);
-                setSkinPixels(null);
-                setCheckerPatches([]);
-              }}
+              onClick={resetAll}
               className="text-gray-500 hover:text-gray-700"
             >
               다시 촬영
@@ -442,13 +508,7 @@ export default function ScanPage() {
 
           <div className="mt-8 text-center">
             <button
-              onClick={() => {
-                setStep("upload");
-                setImageUrl(null);
-                setSkinPixels(null);
-                setCheckerPatches([]);
-                setResult(null);
-              }}
+              onClick={resetAll}
               className="text-rose-600 hover:text-rose-700 font-medium"
             >
               다시 분석하기

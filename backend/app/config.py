@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 480
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin1234"
+    UPLOAD_DIR: str = "uploads"
 
     model_config = {"env_file": ".env"}
 

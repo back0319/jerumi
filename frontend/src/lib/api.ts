@@ -36,6 +36,25 @@ export async function apiAuthPost<T>(
   return res.json();
 }
 
+export async function apiAuthPostFormData<T>(
+  path: string,
+  formData: FormData,
+  token: string
+): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API error ${res.status}: ${err}`);
+  }
+  return res.json();
+}
+
 export async function apiAuthDelete(path: string, token: string) {
   const res = await fetch(`${API_URL}${path}`, {
     method: "DELETE",

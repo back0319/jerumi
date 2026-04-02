@@ -41,3 +41,11 @@ class FoundationOut(BaseModel):
     swatch_image_url: str | None
 
     model_config = {"from_attributes": True}
+
+
+class FoundationAnalysisResult(BaseModel):
+    L_value: float
+    a_value: float
+    b_value: float
+    hex_color: str
+    undertone: str
