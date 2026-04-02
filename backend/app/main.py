@@ -9,13 +9,14 @@ from app.config import settings
 from app.database import Base, engine
 from app.routers import analysis, auth, foundations
 
+# Ensure upload directory exists before mounting static files
+Path(settings.UPLOAD_DIR, "swatches").mkdir(parents=True, exist_ok=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Ensure upload directories exist
-    Path(settings.UPLOAD_DIR, "swatches").mkdir(parents=True, exist_ok=True)
     yield
 
 
