@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiPost } from "@/lib/api";
 import {
   extractSkinPixels,
@@ -15,6 +15,7 @@ import type { AnalysisResponse } from "@/types";
 import CameraCapture from "@/components/CameraCapture";
 
 type Step = "upload" | "camera" | "checker" | "analyzing" | "done";
+type CheckerImageStatus = "idle" | "loading" | "ready" | "error";
 
 export default function ScanPage() {
   const [step, setStep] = useState<Step>("upload");
@@ -24,8 +25,34 @@ export default function ScanPage() {
   const [skinPixels, setSkinPixels] = useState<number[][] | null>(null);
   const [checkerPatches, setCheckerPatches] = useState<MeasuredPatch[]>([]);
   const [selectingPatch, setSelectingPatch] = useState<number | null>(null);
+  const [checkerImageStatus, setCheckerImageStatus] =
+    useState<CheckerImageStatus>("idle");
+  const [checkerImageError, setCheckerImageError] = useState<string | null>(
+    null
+  );
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const checkerImgRef = useRef<HTMLImageElement>(null);
+  const uploadedObjectUrlRef = useRef<string | null>(null);
+
+  const revokeUploadedObjectUrl = useCallback(() => {
+    if (!uploadedObjectUrlRef.current) return;
+    URL.revokeObjectURL(uploadedObjectUrlRef.current);
+    uploadedObjectUrlRef.current = null;
+  }, []);
+
+  const drawImageToCanvas = useCallback(
+    (img: HTMLImageElement, canvas: HTMLCanvasElement) => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return false;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      return true;
+    },
+    []
+  );
 
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,11 +62,13 @@ export default function ScanPage() {
         setError("파일 크기는 10MB 이하여야 합니다.");
         return;
       }
+      revokeUploadedObjectUrl();
       setError(null);
       const url = URL.createObjectURL(file);
+      uploadedObjectUrlRef.current = url;
       setImageUrl(url);
     },
-    []
+    [revokeUploadedObjectUrl]
   );
 
   const processImageOnCanvas = useCallback((canvas: HTMLCanvasElement) => {
@@ -51,39 +80,42 @@ export default function ScanPage() {
     const canvas = canvasRef.current;
     if (!img || !canvas) return;
 
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0);
+    const drawn = drawImageToCanvas(img, canvas);
+    if (!drawn) return;
 
     processImageOnCanvas(canvas);
-  }, [processImageOnCanvas]);
+  }, [drawImageToCanvas, processImageOnCanvas]);
 
   const handleCameraCapture = useCallback(
     (dataUrl: string) => {
+      revokeUploadedObjectUrl();
       setError(null);
       setImageUrl(dataUrl);
-
-      // Load the captured image onto the canvas
-      const img = new Image();
-      img.onload = () => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-        processImageOnCanvas(canvas);
-      };
-      img.src = dataUrl;
-
-      // Switch away from camera step (will go to checker after face mesh)
-      setStep("upload"); // temporarily show loading state
+      setStep("upload");
     },
-    [processImageOnCanvas]
+    [revokeUploadedObjectUrl]
   );
+
+  const handleCheckerImageLoad = useCallback(() => {
+    const img = checkerImgRef.current;
+    const canvas = canvasRef.current;
+    if (!img || !canvas) return;
+
+    const drawn = drawImageToCanvas(img, canvas);
+    if (!drawn) {
+      setCheckerImageStatus("error");
+      setCheckerImageError("캔버스를 초기화하지 못했습니다. 다시 시도해주세요.");
+      return;
+    }
+
+    setCheckerImageStatus("ready");
+    setCheckerImageError(null);
+  }, [drawImageToCanvas]);
+
+  const handleCheckerImageError = useCallback(() => {
+    setCheckerImageStatus("error");
+    setCheckerImageError("사진을 불러오지 못했습니다. 다른 사진으로 다시 시도해주세요.");
+  }, []);
 
   const loadFaceMeshAndExtract = async (canvas: HTMLCanvasElement) => {
     try {
@@ -229,7 +261,20 @@ export default function ScanPage() {
     }
   };
 
+  const handleSelectDifferentPhoto = useCallback(() => {
+    revokeUploadedObjectUrl();
+    setStep("upload");
+    setImageUrl(null);
+    setSkinPixels(null);
+    setCheckerPatches([]);
+    setSelectingPatch(null);
+    setCheckerImageStatus("idle");
+    setCheckerImageError(null);
+    setError(null);
+  }, [revokeUploadedObjectUrl]);
+
   const resetAll = () => {
+    revokeUploadedObjectUrl();
     setStep("upload");
     setImageUrl(null);
     setSkinPixels(null);
@@ -237,7 +282,33 @@ export default function ScanPage() {
     setSelectingPatch(null);
     setResult(null);
     setError(null);
+    setCheckerImageStatus("idle");
+    setCheckerImageError(null);
   };
+
+  useEffect(() => {
+    setCheckerPatches([]);
+    setSelectingPatch(null);
+    setCheckerImageStatus("idle");
+    setCheckerImageError(null);
+  }, [imageUrl]);
+
+  useEffect(() => {
+    if (step !== "checker") return;
+    if (!imageUrl) {
+      setCheckerImageStatus("error");
+      setCheckerImageError("원본 사진이 없습니다. 사진을 다시 선택해주세요.");
+      return;
+    }
+    setCheckerImageStatus("loading");
+    setCheckerImageError(null);
+  }, [step, imageUrl]);
+
+  useEffect(() => {
+    return () => {
+      revokeUploadedObjectUrl();
+    };
+  }, [revokeUploadedObjectUrl]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -338,12 +409,29 @@ export default function ScanPage() {
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Canvas for clicking */}
             <div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                ref={checkerImgRef}
+                src={imageUrl ?? ""}
+                alt="컬러체커 보정 원본"
+                className="hidden"
+                onLoad={handleCheckerImageLoad}
+                onError={handleCheckerImageError}
+              />
               <canvas
                 ref={canvasRef}
                 className="max-w-full border rounded cursor-crosshair"
                 style={{ maxHeight: "400px" }}
                 onClick={handleCanvasClick}
               />
+              {checkerImageStatus === "loading" && (
+                <p className="text-sm text-gray-500 mt-2">
+                  보정용 사진을 불러오고 있습니다...
+                </p>
+              )}
+              {checkerImageStatus === "error" && (
+                <p className="text-sm text-red-600 mt-2">{checkerImageError}</p>
+              )}
               {selectingPatch !== null && (
                 <p className="text-sm text-rose-600 mt-2">
                   &quot;{COLORCHECKER_REFERENCE[selectingPatch].name}&quot;
@@ -390,11 +478,27 @@ export default function ScanPage() {
           <div className="flex gap-4 mt-6">
             <button
               onClick={handleAnalyze}
-              className="bg-rose-600 text-white px-6 py-2 rounded-lg hover:bg-rose-700 transition"
+              disabled={checkerImageStatus !== "ready"}
+              title={
+                checkerImageStatus !== "ready"
+                  ? "보정용 사진 로딩이 완료된 후 분석할 수 있습니다."
+                  : undefined
+              }
+              className={`px-6 py-2 rounded-lg transition ${
+                checkerImageStatus === "ready"
+                  ? "bg-rose-600 text-white hover:bg-rose-700"
+                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
+              }`}
             >
               {checkerPatches.length >= 3
                 ? `보정 적용 후 분석 (${checkerPatches.length}개 패치)`
                 : "보정 없이 분석"}
+            </button>
+            <button
+              onClick={handleSelectDifferentPhoto}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              다른 사진 선택
             </button>
             <button
               onClick={resetAll}
