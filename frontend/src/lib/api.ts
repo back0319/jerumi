@@ -103,3 +103,20 @@ export async function apiAuthDelete(path: string, token: string) {
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
+
+export async function apiAuthPut<T>(
+  path: string,
+  body: unknown,
+  token: string
+): Promise<T> {
+  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}

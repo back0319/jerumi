@@ -8,7 +8,7 @@ export interface Foundation {
   a_value: number;
   b_value: number;
   hex_color: string;
-  undertone: string;
+  undertone: string | null;
   swatch_image_url: string | null;
 }
 
@@ -21,7 +21,7 @@ export interface RecommendationItem {
   lab: [number, number, number];
   hex_color: string;
   delta_e: number;
-  undertone: string;
+  undertone: string | null;
 }
 
 export interface AnalysisResponse {

@@ -18,7 +18,7 @@ class Foundation(Base):
     a_value: Mapped[float] = mapped_column(Float)
     b_value: Mapped[float] = mapped_column(Float)
     hex_color: Mapped[str] = mapped_column(String(7), default="#000000")
-    undertone: Mapped[str] = mapped_column(String(20), default="NEUTRAL")
+    undertone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     swatch_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

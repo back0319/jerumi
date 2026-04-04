@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, field_validator
 
 
 class FoundationCreate(BaseModel):
@@ -10,8 +12,16 @@ class FoundationCreate(BaseModel):
     a_value: float
     b_value: float
     hex_color: str = "#000000"
-    undertone: str = "NEUTRAL"
+    undertone: str | None = None
     swatch_image_url: str | None = None
+
+    @field_validator("undertone", mode="before")
+    @classmethod
+    def normalize_undertone(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().upper()
+        return normalized or None
 
 
 class FoundationUpdate(BaseModel):
@@ -26,6 +36,14 @@ class FoundationUpdate(BaseModel):
     undertone: str | None = None
     swatch_image_url: str | None = None
 
+    @field_validator("undertone", mode="before")
+    @classmethod
+    def normalize_undertone(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().upper()
+        return normalized or None
+
 
 class FoundationOut(BaseModel):
     id: int
@@ -37,7 +55,7 @@ class FoundationOut(BaseModel):
     a_value: float
     b_value: float
     hex_color: str
-    undertone: str
+    undertone: str | None
     swatch_image_url: str | None
 
     model_config = {"from_attributes": True}

@@ -5,6 +5,7 @@ import {
   apiGet,
   apiFormPost,
   apiAuthPost,
+  apiAuthPut,
   apiAuthDelete,
   apiAuthPostFormData,
 } from "@/lib/api";
@@ -25,7 +26,7 @@ function createDefaultManualForm() {
     a_value: 0,
     b_value: 0,
     hex_color: "#000000",
-    undertone: "NEUTRAL",
+    undertone: "",
   };
 }
 
@@ -71,6 +72,7 @@ export default function AdminPage() {
 
   // New foundation form (manual)
   const [showForm, setShowForm] = useState(false);
+  const [editingFoundationId, setEditingFoundationId] = useState<number | null>(null);
   const [form, setForm] = useState(createDefaultManualForm);
 
   // Photo analysis form
@@ -161,24 +163,83 @@ export default function AdminPage() {
     };
   }, [photoPreview]);
 
+  const openCreateForm = useCallback(() => {
+    setEditingFoundationId(null);
+    setForm(createDefaultManualForm());
+    setShowPhotoForm(false);
+    setShowForm(true);
+  }, []);
+
+  const openEditForm = useCallback((foundation: Foundation) => {
+    setEditingFoundationId(foundation.id);
+    setForm({
+      brand: foundation.brand,
+      shade_name: foundation.shade_name,
+      shade_code: foundation.shade_code,
+      product_name: foundation.product_name,
+      L_value: foundation.L_value,
+      a_value: foundation.a_value,
+      b_value: foundation.b_value,
+      hex_color: foundation.hex_color,
+      undertone: foundation.undertone ?? "",
+    });
+    setShowPhotoForm(false);
+    setShowForm(true);
+  }, []);
+
+  const closeManualForm = useCallback(() => {
+    setShowForm(false);
+    setEditingFoundationId(null);
+    setForm(createDefaultManualForm());
+  }, []);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
     setIsSavingManual(true);
     setListError("");
 
+    const payload = {
+      ...form,
+      undertone: form.undertone || null,
+    };
+
     try {
-      const created = await apiAuthPost<Foundation>("/api/foundations", form, token);
-      startTransition(() => {
-        setAllFoundations((prev) => sortFoundations([...prev, created]));
-        setShowForm(false);
-        setForm(createDefaultManualForm());
-        if (filterBrand && filterBrand !== created.brand) {
-          setFilterBrand(created.brand);
-        }
-      });
+      if (editingFoundationId === null) {
+        const created = await apiAuthPost<Foundation>("/api/foundations", payload, token);
+        startTransition(() => {
+          setAllFoundations((prev) => sortFoundations([...prev, created]));
+          closeManualForm();
+          if (filterBrand && filterBrand !== created.brand) {
+            setFilterBrand(created.brand);
+          }
+        });
+      } else {
+        const updated = await apiAuthPut<Foundation>(
+          `/api/foundations/${editingFoundationId}`,
+          payload,
+          token
+        );
+        startTransition(() => {
+          setAllFoundations((prev) =>
+            sortFoundations(
+              prev.map((foundation) =>
+                foundation.id === editingFoundationId ? updated : foundation
+              )
+            )
+          );
+          closeManualForm();
+          if (filterBrand && filterBrand !== updated.brand) {
+            setFilterBrand(updated.brand);
+          }
+        });
+      }
     } catch {
-      setListError("테스트 데이터를 저장하지 못했습니다. 다시 시도해주세요.");
+      setListError(
+        editingFoundationId === null
+          ? "파운데이션을 저장하지 못했습니다. 다시 시도해주세요."
+          : "파운데이션을 수정하지 못했습니다. 다시 시도해주세요."
+      );
     } finally {
       setIsSavingManual(false);
     }
@@ -194,6 +255,9 @@ export default function AdminPage() {
       const nextFoundations = allFoundations.filter((foundation) => foundation.id !== id);
       startTransition(() => {
         setAllFoundations(nextFoundations);
+        if (editingFoundationId === id) {
+          closeManualForm();
+        }
       });
     } catch {
       setListError("데이터를 삭제하지 못했습니다. 다시 시도해주세요.");
@@ -413,7 +477,7 @@ export default function AdminPage() {
           <button
             onClick={() => {
               setShowPhotoForm(!showPhotoForm);
-              setShowForm(false);
+              closeManualForm();
             }}
             className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm hover:bg-indigo-700"
           >
@@ -421,8 +485,11 @@ export default function AdminPage() {
           </button>
           <button
             onClick={() => {
-              setShowForm(!showForm);
-              setShowPhotoForm(false);
+              if (showForm && editingFoundationId === null) {
+                closeManualForm();
+              } else {
+                openCreateForm();
+              }
             }}
             className="bg-rose-600 text-white px-4 py-1.5 rounded text-sm hover:bg-rose-700"
           >
@@ -642,10 +709,23 @@ export default function AdminPage() {
 
       {/* Manual Form */}
       {showForm && (
-        <form
-          onSubmit={handleCreate}
-          className="bg-white rounded-xl p-6 shadow-sm mb-6 grid grid-cols-3 gap-4"
-        >
+        <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">
+              {editingFoundationId === null ? "파운데이션 수동 추가" : "파운데이션 수정"}
+            </h2>
+            <button
+              type="button"
+              onClick={closeManualForm}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              닫기
+            </button>
+          </div>
+          <form
+            onSubmit={handleCreate}
+            className="grid grid-cols-3 gap-4"
+          >
           <input
             placeholder="브랜드"
             value={form.brand}
@@ -707,6 +787,7 @@ export default function AdminPage() {
             onChange={(e) => setForm({ ...form, undertone: e.target.value })}
             className="border rounded px-3 py-2"
           >
+            <option value="">비워두기</option>
             <option value="WARM">Warm</option>
             <option value="COOL">Cool</option>
             <option value="NEUTRAL">Neutral</option>
@@ -715,9 +796,16 @@ export default function AdminPage() {
             disabled={isSavingManual}
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
           >
-            {isSavingManual ? "저장 중..." : "저장"}
+            {isSavingManual
+              ? editingFoundationId === null
+                ? "저장 중..."
+                : "수정 중..."
+              : editingFoundationId === null
+              ? "저장"
+              : "수정 저장"}
           </button>
-        </form>
+          </form>
+        </div>
       )}
 
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -759,8 +847,14 @@ export default function AdminPage() {
                 <td className="px-4 py-3 font-mono">{f.L_value}</td>
                 <td className="px-4 py-3 font-mono">{f.a_value}</td>
                 <td className="px-4 py-3 font-mono">{f.b_value}</td>
-                <td className="px-4 py-3">{f.undertone}</td>
+                <td className="px-4 py-3">{f.undertone || "-"}</td>
                 <td className="px-4 py-3">
+                  <button
+                    onClick={() => openEditForm(f)}
+                    className="text-blue-600 hover:text-blue-800 text-xs mr-3"
+                  >
+                    수정
+                  </button>
                   <button
                     onClick={() => handleDelete(f.id)}
                     disabled={deletingId === f.id}
