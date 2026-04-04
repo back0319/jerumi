@@ -54,8 +54,7 @@ export default function CameraCapture({ onCapture, onCancel }: CameraCaptureProp
         <Webcam
           ref={webcamRef}
           audio={false}
-          screenshotFormat="image/jpeg"
-          screenshotQuality={0.92}
+          screenshotFormat="image/png"
           videoConstraints={{
             facingMode,
             width: { ideal: 1920 },

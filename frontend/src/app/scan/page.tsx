@@ -98,6 +98,8 @@ export default function ScanPage() {
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext("2d");
       if (!ctx) return false;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
       return true;
@@ -117,7 +119,6 @@ export default function ScanPage() {
     if (!ctx) return;
 
     ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-    ctx.drawImage(sourceCanvas, 0, 0);
 
     if (!overlay) return;
 
@@ -583,18 +584,20 @@ export default function ScanPage() {
       {step === "upload" && imageUrl && (
         <div className="bg-white rounded-xl p-8 shadow-sm">
           <div className="text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              ref={imgRef}
-              src={imageUrl}
-              alt="업로드된 얼굴"
-              className="hidden"
-              onLoad={handleImageLoad}
-            />
-            <canvas
-              ref={previewCanvasRef}
-              className="max-w-full max-h-96 mx-auto rounded border"
-            />
+            <div className="relative inline-block max-w-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                ref={imgRef}
+                src={imageUrl}
+                alt="업로드된 얼굴"
+                className="block max-w-full max-h-96 mx-auto rounded border"
+                onLoad={handleImageLoad}
+              />
+              <canvas
+                ref={previewCanvasRef}
+                className="pointer-events-none absolute inset-0 h-full w-full rounded"
+              />
+            </div>
             <canvas ref={processingCanvasRef} className="hidden" />
             <div className="mt-4">
               <div className="animate-spin w-8 h-8 border-4 border-rose-200 border-t-rose-600 rounded-full mx-auto mb-2" />
@@ -631,21 +634,23 @@ export default function ScanPage() {
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Canvas for clicking */}
             <div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                ref={checkerImgRef}
-                src={imageUrl ?? ""}
-                alt="컬러체커 보정 원본"
-                className="hidden"
-                onLoad={handleCheckerImageLoad}
-                onError={handleCheckerImageError}
-              />
-              <canvas
-                ref={previewCanvasRef}
-                className="max-w-full border rounded cursor-crosshair"
-                style={{ maxHeight: "400px" }}
-                onClick={handleCanvasClick}
-              />
+              <div className="relative inline-block max-w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  ref={checkerImgRef}
+                  src={imageUrl ?? ""}
+                  alt="컬러체커 보정 원본"
+                  className="block max-w-full rounded border"
+                  style={{ maxHeight: "400px" }}
+                  onLoad={handleCheckerImageLoad}
+                  onError={handleCheckerImageError}
+                />
+                <canvas
+                  ref={previewCanvasRef}
+                  className="absolute inset-0 h-full w-full rounded cursor-crosshair"
+                  onClick={handleCanvasClick}
+                />
+              </div>
               <canvas ref={processingCanvasRef} className="hidden" />
               {checkerImageStatus === "loading" && (
                 <p className="text-sm text-gray-500 mt-2">
