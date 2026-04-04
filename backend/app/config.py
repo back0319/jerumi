@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -10,13 +11,23 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 def normalize_database_url(url: str) -> str:
     normalized = url.strip()
-    if normalized.startswith("postgresql+asyncpg://"):
-        return normalized
     if normalized.startswith("postgres://"):
-        return "postgresql+asyncpg://" + normalized.removeprefix("postgres://")
-    if normalized.startswith("postgresql://"):
-        return "postgresql+asyncpg://" + normalized.removeprefix("postgresql://")
-    return normalized
+        normalized = "postgresql+asyncpg://" + normalized.removeprefix("postgres://")
+    elif normalized.startswith("postgresql://"):
+        normalized = "postgresql+asyncpg://" + normalized.removeprefix("postgresql://")
+
+    if not normalized.startswith("postgresql+asyncpg://"):
+        return normalized
+
+    parts = urlsplit(normalized)
+    query_items = []
+    for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key == "sslmode":
+            query_items.append(("ssl", value))
+        else:
+            query_items.append((key, value))
+
+    return urlunsplit(parts._replace(query=urlencode(query_items)))
 
 
 class Settings(BaseSettings):
