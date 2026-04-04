@@ -8,14 +8,30 @@
 
 > 이 프로젝트는 현재 `frontend`가 `NEXT_PUBLIC_API_URL`로 백엔드에 직접 요청합니다.
 
+## 1-1) Vercel Frontend Project 설정
+
+이 저장소는 모노레포 구조이므로, Vercel에서 프론트를 배포할 때 `Root Directory`를 반드시 `/frontend`로 설정해야 합니다.
+
+- Root Directory: `/frontend`
+- Framework Preset: `Next.js`
+- Build Command: `next build` 기본값 사용 가능
+
+`No Next.js version detected` 에러가 나오면 거의 항상 Vercel 프로젝트가 저장소 루트에서 빌드하고 있다는 뜻입니다. 이 경우 `frontend/package.json`을 못 찾고 있는 상태입니다.
+
 ## 2) Supabase: Database URL 준비
 
 Supabase 프로젝트 생성 후 `Connection string`(Postgres)을 복사해서 백엔드 `DATABASE_URL`로 사용합니다.
 
+중요:
+
+- Railway 백엔드라면 `Direct connection`보다 `Supavisor session mode` 연결 문자열을 우선 사용합니다.
+- 이유: Railway 공식 문서 기준 outbound IPv6가 지원되지 않아 Supabase direct host 연결이 실패할 수 있습니다.
+- `Transaction mode`는 Supabase 공식 문서상 prepared statements를 지원하지 않으므로, 이 백엔드에는 권장하지 않습니다.
+
 예시 형식:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://<user>:<password>@<host>:<port>/<db>?ssl=require
+DATABASE_URL=postgresql+asyncpg://<user>:<password>@<session-pooler-host>:5432/<db>?sslmode=require
 ```
 
 ## 3) Backend 환경변수 (필수)
@@ -35,6 +51,7 @@ CORS_ORIGIN_REGEX=^https://<your-vercel-project>(-[a-z0-9-]+)?\.vercel\.app$
 메모:
 - `CORS_ORIGINS`는 쉼표 구분 문자열도 지원합니다.
 - `CORS_ORIGIN_REGEX`를 쓰면 Vercel preview 도메인까지 허용할 수 있습니다.
+- Vercel Storage가 Vercel 프로젝트에는 환경변수를 자동 주입해도, Railway에는 자동 전달되지 않으므로 `DATABASE_URL`은 Railway에 직접 설정해야 합니다.
 
 ## 4) Vercel 환경변수 (필수)
 

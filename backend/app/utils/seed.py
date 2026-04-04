@@ -19,7 +19,7 @@ from colour import XYZ_to_Lab, XYZ_to_sRGB, sRGB_to_XYZ
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.database import async_session, engine, Base
+from app.database import Base, async_session, engine
 from app.models.foundation import Foundation
 
 
@@ -64,7 +64,7 @@ async def seed():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    shade_dir = Path(__file__).resolve().parents[1] / "shade_images"
+    shade_dir = Path(__file__).resolve().parents[2] / "shade_images"
     if not shade_dir.exists():
         print(f"No shade_images directory found at {shade_dir}")
         return
