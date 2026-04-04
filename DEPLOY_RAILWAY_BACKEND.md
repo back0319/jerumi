@@ -6,10 +6,10 @@
 
 - Repository: `https://github.com/back0319/skinmatch`
 - Service type: Railway `Empty Service` 또는 `Connect Repo`
-- Build method: `backend/Dockerfile` via repo-root `railway.toml`
+- Build method: repo-root `Dockerfile` via repo-root `railway.toml`
 - Database: Supabase Postgres (created via Vercel Storage)
 
-리포 루트에 `railway.toml`을 추가해 두었기 때문에, Railway에서 `Root Directory`가 보이지 않더라도 `backend/Dockerfile`과 `/health` 체크 경로를 코드 기준으로 사용할 수 있습니다.
+리포 루트에 Railway 전용 `Dockerfile`과 `railway.toml`을 추가해 두었기 때문에, Railway에서 `Root Directory`가 보이지 않더라도 루트 컨텍스트 기준으로 바로 빌드할 수 있습니다.
 
 ## 배포 구조
 
@@ -50,7 +50,7 @@ DATABASE_URL=postgresql+asyncpg://postgres.<project-ref>:<password>@aws-0-<regio
 2. 백엔드용 서비스를 하나 만듭니다.
 3. 백엔드 서비스의 Source를 이 GitHub 저장소로 연결합니다.
 4. 별도 Root Directory 설정이 보이지 않으면 그대로 둡니다.
-5. 이 리포의 `railway.toml`이 Builder=`DOCKERFILE`, Dockerfile path=`backend/Dockerfile`, Healthcheck=`/health`를 적용합니다.
+5. 이 리포의 `railway.toml`이 Builder=`DOCKERFILE`, Dockerfile path=`Dockerfile`, Healthcheck=`/health`를 적용합니다.
 6. 필요하면 대시보드 값보다 `railway.toml` 값이 우선합니다.
 
 ## 필수 환경변수
