@@ -10,6 +10,7 @@ import {
 } from "@/lib/facemesh";
 import {
   COLORCHECKER_REFERENCE,
+  labToHex,
   type MeasuredPatch,
   buildCheckerPatches,
 } from "@/lib/colorChecker";
@@ -661,10 +662,26 @@ export default function ScanPage() {
                 <p className="text-sm text-red-600 mt-2">{checkerImageError}</p>
               )}
               {selectingPatch !== null && (
-                <p className="text-sm text-rose-600 mt-2">
-                  &quot;{COLORCHECKER_REFERENCE[selectingPatch].name}&quot;
-                  패치를 사진에서 클릭하세요
-                </p>
+                <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-left">
+                  <p className="text-sm font-semibold text-rose-700">
+                    &quot;{COLORCHECKER_REFERENCE[selectingPatch].name}&quot; 패치를
+                    사진에서 클릭하세요
+                  </p>
+                  <div className="mt-2 flex items-center gap-3 text-sm text-rose-700">
+                    <span
+                      className="h-8 w-8 rounded border border-black/10"
+                      style={{
+                        backgroundColor: labToHex(
+                          COLORCHECKER_REFERENCE[selectingPatch].lab
+                        ),
+                      }}
+                    />
+                    <span className="font-mono">
+                      기준 색상{" "}
+                      {labToHex(COLORCHECKER_REFERENCE[selectingPatch].lab)}
+                    </span>
+                  </div>
+                </div>
               )}
               {analysisOverlay && (
                 <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-left">
@@ -698,11 +715,21 @@ export default function ScanPage() {
 
             {/* Checker patch selection */}
             <div className="max-h-96 overflow-y-auto">
+              <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-sm font-semibold text-gray-800">
+                  컬러체커 기준 색상 미리보기
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  아래 swatch는 기준 ColorChecker 색상입니다. 먼저 비슷한 패치를
+                  확인한 뒤 사진에서 같은 칸을 클릭하면 됩니다.
+                </p>
+              </div>
               <div className="grid grid-cols-4 gap-2">
                 {COLORCHECKER_REFERENCE.map((patch, idx) => {
                   const measured = checkerPatches.find(
                     (p) => p.patchIndex === idx
                   );
+                  const referenceHex = labToHex(patch.lab);
                   return (
                     <button
                       key={idx}
@@ -715,14 +742,30 @@ export default function ScanPage() {
                           : "border-gray-200 hover:border-gray-400"
                       }`}
                     >
-                      <div className="text-center truncate">{patch.name}</div>
-                      {measured && (
-                        <div
-                          className="w-6 h-6 rounded mx-auto mt-1"
-                          style={{
-                            backgroundColor: `rgb(${measured.measuredRgb.join(",")})`,
-                          }}
-                        />
+                      <div
+                        className="h-10 rounded-md border border-black/10"
+                        style={{ backgroundColor: referenceHex }}
+                      />
+                      <div className="mt-2 text-center truncate font-medium">
+                        {patch.name}
+                      </div>
+                      <div className="mt-1 text-[11px] font-mono text-gray-500">
+                        {referenceHex}
+                      </div>
+                      {measured ? (
+                        <div className="mt-2 flex items-center justify-center gap-1 text-[11px] text-gray-600">
+                          <span>선택됨</span>
+                          <span
+                            className="h-4 w-4 rounded border border-black/10"
+                            style={{
+                              backgroundColor: `rgb(${measured.measuredRgb.join(",")})`,
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-gray-400">
+                          클릭해서 지정
+                        </div>
                       )}
                     </button>
                   );

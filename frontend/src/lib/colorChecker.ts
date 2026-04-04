@@ -38,6 +38,59 @@ export const COLORCHECKER_REFERENCE: {
   { name: "Black", lab: [20.46, -0.08, -0.97] },
 ];
 
+function labPivotToXyz(value: number): number {
+  const cube = value ** 3;
+  return cube > 0.008856 ? cube : (value - 16 / 116) / 7.787;
+}
+
+function xyzChannelToSrgb(value: number): number {
+  const linear =
+    value <= 0.0031308
+      ? 12.92 * value
+      : 1.055 * Math.pow(value, 1 / 2.4) - 0.055;
+  return Math.max(0, Math.min(255, Math.round(linear * 255)));
+}
+
+export function labToRgb([l, a, b]: [number, number, number]): [number, number, number] {
+  const fy = (l + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+
+  const x = 95.047 * labPivotToXyz(fx);
+  const y = 100.0 * labPivotToXyz(fy);
+  const z = 108.883 * labPivotToXyz(fz);
+
+  const normalizedX = x / 100;
+  const normalizedY = y / 100;
+  const normalizedZ = z / 100;
+
+  const r =
+    normalizedX * 3.2406 +
+    normalizedY * -1.5372 +
+    normalizedZ * -0.4986;
+  const g =
+    normalizedX * -0.9689 +
+    normalizedY * 1.8758 +
+    normalizedZ * 0.0415;
+  const blue =
+    normalizedX * 0.0557 +
+    normalizedY * -0.204 +
+    normalizedZ * 1.057;
+
+  return [
+    xyzChannelToSrgb(r),
+    xyzChannelToSrgb(g),
+    xyzChannelToSrgb(blue),
+  ];
+}
+
+export function labToHex(lab: [number, number, number]): string {
+  const [r, g, b] = labToRgb(lab);
+  return `#${r.toString(16).padStart(2, "0")}${g
+    .toString(16)
+    .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 /**
  * Let the user click on color checker patches in the image to identify
  * measured RGB values for calibration.
