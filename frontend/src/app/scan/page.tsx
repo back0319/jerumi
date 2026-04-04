@@ -62,6 +62,14 @@ function averagePixelsToHex(pixels: number[][]): string {
     .padStart(2, "0")}${avgB.toString(16).padStart(2, "0")}`;
 }
 
+function getDeltaEBadgeClass(deltaE: number): string {
+  if (deltaE <= 1.0) return "bg-green-100 text-green-700";
+  if (deltaE <= 2.0) return "bg-emerald-100 text-emerald-700";
+  if (deltaE <= 3.5) return "bg-yellow-100 text-yellow-700";
+  if (deltaE <= 5.0) return "bg-orange-100 text-orange-700";
+  return "bg-red-100 text-red-700";
+}
+
 export default function ScanPage() {
   const FACE_MESH_TIMEOUT_MS = 8000;
   const [step, setStep] = useState<Step>("upload");
@@ -847,6 +855,33 @@ export default function ScanPage() {
 
           {/* Recommendations */}
           <h2 className="text-lg font-semibold mb-4">추천 파운데이션</h2>
+          <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-sm font-semibold text-gray-800">
+              CIEDE2000 색차(ΔE) 해석 기준
+            </p>
+            <div className="mt-3 grid gap-2 text-xs text-gray-600 md:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-lg bg-white p-3">
+                <p className="font-semibold text-gray-800">ΔE ≤ 1.0</p>
+                <p>거의 구분 어려움</p>
+              </div>
+              <div className="rounded-lg bg-white p-3">
+                <p className="font-semibold text-gray-800">1.0 &lt; ΔE ≤ 2.0</p>
+                <p>아주 근접</p>
+              </div>
+              <div className="rounded-lg bg-white p-3">
+                <p className="font-semibold text-gray-800">2.0 &lt; ΔE ≤ 3.5</p>
+                <p>눈에 띄는 차이</p>
+              </div>
+              <div className="rounded-lg bg-white p-3">
+                <p className="font-semibold text-gray-800">3.5 &lt; ΔE ≤ 5.0</p>
+                <p>뚜렷한 차이</p>
+              </div>
+              <div className="rounded-lg bg-white p-3">
+                <p className="font-semibold text-gray-800">ΔE &gt; 5.0</p>
+                <p>차이 큼</p>
+              </div>
+            </div>
+          </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {result.recommendations.map((rec, i) => (
               <div
@@ -858,21 +893,11 @@ export default function ScanPage() {
                     {i + 1}위
                   </span>
                   <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      rec.delta_e <= 1
-                        ? "bg-green-100 text-green-700"
-                        : rec.delta_e <= 3.5
-                        ? "bg-yellow-100 text-yellow-700"
-                        : "bg-orange-100 text-orange-700"
-                    }`}
+                    className={`text-xs px-2 py-0.5 rounded ${getDeltaEBadgeClass(
+                      rec.delta_e
+                    )}`}
                   >
-                    {rec.delta_e <= 1
-                      ? "거의 동일"
-                      : rec.delta_e <= 2
-                      ? "매우 유사"
-                      : rec.delta_e <= 3.5
-                      ? "유사"
-                      : "차이 있음"}
+                    {rec.delta_e_category}
                   </span>
                 </div>
 
@@ -904,6 +929,14 @@ export default function ScanPage() {
                     ΔE={rec.delta_e} | L*={rec.lab[0]} a*={rec.lab[1]} b*=
                     {rec.lab[2]}
                   </span>
+                </div>
+                <div className="mt-2 rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs font-semibold text-gray-700">
+                    {rec.delta_e_range}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {rec.delta_e_description}
+                  </p>
                 </div>
               </div>
             ))}

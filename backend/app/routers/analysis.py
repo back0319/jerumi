@@ -80,6 +80,9 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
             lab=[r["L_value"], r["a_value"], r["b_value"]],
             hex_color=r["hex_color"],
             delta_e=r["delta_e"],
+            delta_e_category=r["delta_e_category"],
+            delta_e_range=r["delta_e_range"],
+            delta_e_description=r["delta_e_description"],
             undertone=r["undertone"],
         )
         for r in ranked

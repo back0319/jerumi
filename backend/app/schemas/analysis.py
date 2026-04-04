@@ -24,6 +24,9 @@ class RecommendationItem(BaseModel):
     lab: list[float]
     hex_color: str
     delta_e: float
+    delta_e_category: str
+    delta_e_range: str
+    delta_e_description: str
     undertone: str | None
 
 

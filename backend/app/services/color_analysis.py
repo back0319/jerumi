@@ -22,6 +22,47 @@ from colour import (
 from app.schemas.analysis import ColorCheckerPatch
 
 
+def categorize_delta_e(delta_e_value: float) -> tuple[str, str, str]:
+    """Map a CIEDE2000 Delta E value to an objective interpretation band.
+
+    Bands follow commonly used perceptual thresholds:
+    - <= 1.0: nearly imperceptible
+    - <= 2.0: only visible on close inspection
+    - <= 3.5: noticeable at a glance
+    - <= 5.0: clearly different
+    - > 5.0: large color difference
+    """
+    if delta_e_value <= 1.0:
+        return (
+            "거의 구분 어려움",
+            "ΔE ≤ 1.0",
+            "표준 관찰 조건에서 사람 눈으로 거의 구분하기 어려운 수준",
+        )
+    if delta_e_value <= 2.0:
+        return (
+            "아주 근접",
+            "1.0 < ΔE ≤ 2.0",
+            "가까이서 비교하면 차이를 느낄 수 있지만 매우 가까운 수준",
+        )
+    if delta_e_value <= 3.5:
+        return (
+            "눈에 띄는 차이",
+            "2.0 < ΔE ≤ 3.5",
+            "일반적인 조건에서도 차이가 보이기 시작하는 수준",
+        )
+    if delta_e_value <= 5.0:
+        return (
+            "뚜렷한 차이",
+            "3.5 < ΔE ≤ 5.0",
+            "같은 색으로 보기 어려울 만큼 차이가 분명한 수준",
+        )
+    return (
+        "차이 큼",
+        "ΔE > 5.0",
+        "객관적으로 색 차이가 큰 편이라 다른 색상군으로 느껴질 수 있는 수준",
+    )
+
+
 def build_correction_matrix(
     patches: list[ColorCheckerPatch],
 ) -> np.ndarray | None:
@@ -115,7 +156,17 @@ def compute_recommendations(
     for f in foundations:
         shade_lab = np.array([f["L_value"], f["a_value"], f["b_value"]]).reshape(1, 1, 3)
         de = float(delta_E(skin, shade_lab, method="CIE 2000"))
-        results.append({**f, "delta_e": round(de, 3)})
+        rounded_de = round(de, 3)
+        category, delta_range, description = categorize_delta_e(rounded_de)
+        results.append(
+            {
+                **f,
+                "delta_e": rounded_de,
+                "delta_e_category": category,
+                "delta_e_range": delta_range,
+                "delta_e_description": description,
+            }
+        )
 
     results.sort(key=lambda x: x["delta_e"])
     return results[:top_n]

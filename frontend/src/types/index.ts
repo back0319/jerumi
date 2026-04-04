@@ -21,6 +21,9 @@ export interface RecommendationItem {
   lab: [number, number, number];
   hex_color: string;
   delta_e: number;
+  delta_e_category: string;
+  delta_e_range: string;
+  delta_e_description: string;
   undertone: string | null;
 }
 
