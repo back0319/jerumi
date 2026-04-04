@@ -1,6 +1,12 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   apiGet,
   apiFormPost,
@@ -51,8 +57,8 @@ function sortFoundations(items: readonly Foundation[]) {
 }
 
 function buildBrandList(items: readonly Foundation[]) {
-  return Array.from(new Set(items.map((item) => item.brand))).sort((left, right) =>
-    left.localeCompare(right, "ko")
+  return Array.from(new Set(items.map((item) => item.brand))).sort(
+    (left, right) => left.localeCompare(right, "ko"),
   );
 }
 
@@ -72,7 +78,9 @@ export default function AdminPage() {
 
   // New foundation form (manual)
   const [showForm, setShowForm] = useState(false);
-  const [editingFoundationId, setEditingFoundationId] = useState<number | null>(null);
+  const [editingFoundationId, setEditingFoundationId] = useState<number | null>(
+    null,
+  );
   const [form, setForm] = useState(createDefaultManualForm);
 
   // Photo analysis form
@@ -80,7 +88,8 @@ export default function AdminPage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoMeta, setPhotoMeta] = useState(createDefaultPhotoMeta);
-  const [analysisResult, setAnalysisResult] = useState<FoundationAnalysisResult | null>(null);
+  const [analysisResult, setAnalysisResult] =
+    useState<FoundationAnalysisResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -119,7 +128,9 @@ export default function AdminPage() {
         setAllFoundations(sortFoundations(foundationList));
       });
     } catch {
-      setListError("파운데이션 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+      setListError(
+        "파운데이션 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
+      );
     } finally {
       setIsLoadingData(false);
     }
@@ -133,7 +144,7 @@ export default function AdminPage() {
     try {
       const data = await apiFormPost<{ access_token: string }>(
         "/api/auth/login",
-        new URLSearchParams({ username, password })
+        new URLSearchParams({ username, password }),
       );
       setToken(data.access_token);
     } catch {
@@ -150,7 +161,10 @@ export default function AdminPage() {
   }, [token, loadFoundations]);
 
   useEffect(() => {
-    if (filterBrand && !allFoundations.some((foundation) => foundation.brand === filterBrand)) {
+    if (
+      filterBrand &&
+      !allFoundations.some((foundation) => foundation.brand === filterBrand)
+    ) {
       setFilterBrand("");
     }
   }, [allFoundations, filterBrand]);
@@ -206,7 +220,11 @@ export default function AdminPage() {
 
     try {
       if (editingFoundationId === null) {
-        const created = await apiAuthPost<Foundation>("/api/foundations", payload, token);
+        const created = await apiAuthPost<Foundation>(
+          "/api/foundations",
+          payload,
+          token,
+        );
         startTransition(() => {
           setAllFoundations((prev) => sortFoundations([...prev, created]));
           closeManualForm();
@@ -218,15 +236,15 @@ export default function AdminPage() {
         const updated = await apiAuthPut<Foundation>(
           `/api/foundations/${editingFoundationId}`,
           payload,
-          token
+          token,
         );
         startTransition(() => {
           setAllFoundations((prev) =>
             sortFoundations(
               prev.map((foundation) =>
-                foundation.id === editingFoundationId ? updated : foundation
-              )
-            )
+                foundation.id === editingFoundationId ? updated : foundation,
+              ),
+            ),
           );
           closeManualForm();
           if (filterBrand && filterBrand !== updated.brand) {
@@ -238,7 +256,7 @@ export default function AdminPage() {
       setListError(
         editingFoundationId === null
           ? "파운데이션을 저장하지 못했습니다. 다시 시도해주세요."
-          : "파운데이션을 수정하지 못했습니다. 다시 시도해주세요."
+          : "파운데이션을 수정하지 못했습니다. 다시 시도해주세요.",
       );
     } finally {
       setIsSavingManual(false);
@@ -252,7 +270,9 @@ export default function AdminPage() {
 
     try {
       await apiAuthDelete(`/api/foundations/${id}`, token);
-      const nextFoundations = allFoundations.filter((foundation) => foundation.id !== id);
+      const nextFoundations = allFoundations.filter(
+        (foundation) => foundation.id !== id,
+      );
       startTransition(() => {
         setAllFoundations(nextFoundations);
         if (editingFoundationId === id) {
@@ -317,9 +337,12 @@ export default function AdminPage() {
         Math.max(0, x - size),
         Math.max(0, y - size),
         size * 2,
-        size * 2
+        size * 2,
       );
-      let rSum = 0, gSum = 0, bSum = 0, count = 0;
+      let rSum = 0,
+        gSum = 0,
+        bSum = 0,
+        count = 0;
       for (let i = 0; i < data.data.length; i += 4) {
         rSum += data.data[i];
         gSum += data.data[i + 1];
@@ -342,7 +365,7 @@ export default function AdminPage() {
       });
       setSelectingPatch(null);
     },
-    [selectingPatch]
+    [selectingPatch],
   );
 
   const handleAnalyzeSwatch = async () => {
@@ -362,7 +385,7 @@ export default function AdminPage() {
       const result = await apiAuthPostFormData<FoundationAnalysisResult>(
         "/api/foundations/analyze-swatch",
         formData,
-        token
+        token,
       );
       setAnalysisResult(result);
     } catch (err: any) {
@@ -398,7 +421,7 @@ export default function AdminPage() {
       const created = await apiAuthPostFormData<Foundation>(
         "/api/foundations/from-photo",
         formData,
-        token
+        token,
       );
 
       startTransition(() => {
@@ -418,8 +441,11 @@ export default function AdminPage() {
 
   if (!token) {
     return (
-      <div className="max-w-sm mx-auto mt-20 bg-white rounded-xl p-8 shadow-sm">
-        <h1 className="text-xl font-bold mb-6">관리자 로그인</h1>
+      <div className="mx-auto mt-16 max-w-sm rounded-xl bg-white p-6 shadow-sm sm:p-8">
+        <h1 className="text-xl font-bold mb-2">관리자 로그인</h1>
+        <p className="mb-6 text-sm text-gray-500">
+          등록, 수정, 삭제를 위해 로그인하세요.
+        </p>
         {loginError && (
           <p className="text-red-600 text-sm mb-4">{loginError}</p>
         )}
@@ -450,15 +476,20 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">파운데이션 DB 관리</h1>
-        <div className="flex gap-3">
+    <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-5">
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">파운데이션 데이터 관리</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            브랜드별로 빠르게 확인하고 바로 수정할 수 있습니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <select
             value={filterBrand}
             onChange={(e) => setFilterBrand(e.target.value)}
             disabled={isLoadingData}
-            className="border rounded px-3 py-1.5 text-sm"
+            className="rounded border px-3 py-1.5 text-sm"
           >
             <option value="">전체 브랜드</option>
             {brands.map((b) => (
@@ -470,7 +501,7 @@ export default function AdminPage() {
           <button
             onClick={() => void loadFoundations()}
             disabled={isLoadingData}
-            className="border border-gray-200 bg-white px-4 py-1.5 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
+            className="rounded border border-gray-200 bg-white px-4 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
           >
             {isLoadingData ? "동기화 중..." : "새로고침"}
           </button>
@@ -479,9 +510,9 @@ export default function AdminPage() {
               setShowPhotoForm(!showPhotoForm);
               closeManualForm();
             }}
-            className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm hover:bg-indigo-700"
+            className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
           >
-            사진으로 추가
+            사진 등록
           </button>
           <button
             onClick={() => {
@@ -491,9 +522,9 @@ export default function AdminPage() {
                 openCreateForm();
               }
             }}
-            className="bg-rose-600 text-white px-4 py-1.5 rounded text-sm hover:bg-rose-700"
+            className="rounded bg-rose-600 px-4 py-1.5 text-sm text-white hover:bg-rose-700"
           >
-            + 수동 추가
+            + 직접 등록
           </button>
         </div>
       </div>
@@ -506,10 +537,11 @@ export default function AdminPage() {
 
       {/* Photo Analysis Form */}
       {showPhotoForm && (
-        <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
-          <h2 className="text-lg font-semibold mb-4">사진으로 파운데이션 색상 분석</h2>
-          <p className="text-sm text-gray-500 mb-4">
-            흰 종이에 파운데이션을 바르고 컬러체커와 함께 촬영한 사진을 업로드하세요.
+        <div className="mb-6 rounded-xl bg-white p-4 shadow-sm sm:p-5">
+          <h2 className="mb-3 text-lg font-semibold">사진으로 색상 추출</h2>
+          <p className="mb-4 text-sm text-gray-500">
+            흰 종이에 바른 파운데이션과 컬러체커가 함께 보이도록 촬영한 사진을
+            올리세요.
           </p>
 
           {photoError && (
@@ -519,38 +551,46 @@ export default function AdminPage() {
           )}
 
           {/* Product metadata */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <input
               placeholder="브랜드 *"
               value={photoMeta.brand}
-              onChange={(e) => setPhotoMeta({ ...photoMeta, brand: e.target.value })}
+              onChange={(e) =>
+                setPhotoMeta({ ...photoMeta, brand: e.target.value })
+              }
               className="border rounded px-3 py-2 text-sm"
               required
             />
             <input
               placeholder="제품명"
               value={photoMeta.product_name}
-              onChange={(e) => setPhotoMeta({ ...photoMeta, product_name: e.target.value })}
+              onChange={(e) =>
+                setPhotoMeta({ ...photoMeta, product_name: e.target.value })
+              }
               className="border rounded px-3 py-2 text-sm"
             />
             <input
               placeholder="색상명 *"
               value={photoMeta.shade_name}
-              onChange={(e) => setPhotoMeta({ ...photoMeta, shade_name: e.target.value })}
+              onChange={(e) =>
+                setPhotoMeta({ ...photoMeta, shade_name: e.target.value })
+              }
               className="border rounded px-3 py-2 text-sm"
               required
             />
             <input
               placeholder="호수 (예: 21호)"
               value={photoMeta.shade_code}
-              onChange={(e) => setPhotoMeta({ ...photoMeta, shade_code: e.target.value })}
+              onChange={(e) =>
+                setPhotoMeta({ ...photoMeta, shade_code: e.target.value })
+              }
               className="border rounded px-3 py-2 text-sm"
             />
           </div>
 
           {/* Image upload */}
           {!photoPreview && (
-            <label className="block border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-indigo-400 transition mb-4">
+            <label className="mb-4 block cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-6 text-center transition hover:border-indigo-400 sm:p-8">
               <input
                 type="file"
                 accept="image/jpeg,image/png"
@@ -558,7 +598,7 @@ export default function AdminPage() {
                 onChange={handlePhotoUpload}
               />
               <span className="text-gray-500 text-sm">
-                클릭하여 사진 선택 (JPEG/PNG, 최대 20MB)
+                사진 선택 (JPEG/PNG, 최대 20MB)
               </span>
             </label>
           )}
@@ -570,7 +610,7 @@ export default function AdminPage() {
                 <p className="text-sm font-medium text-gray-700 mb-2">
                   {selectingPatch !== null
                     ? `"${COLORCHECKER_REFERENCE[selectingPatch].name}" 패치를 사진에서 클릭하세요`
-                    : "컬러체커 패치를 클릭하여 보정할 수 있습니다 (선택사항)"}
+                    : "필요하면 참조 패치를 고른 뒤 사진에서 같은 칸을 클릭하세요"}
                 </p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -583,7 +623,7 @@ export default function AdminPage() {
                 <canvas
                   ref={photoCanvasRef}
                   className="max-w-full border rounded cursor-crosshair"
-                  style={{ maxHeight: "350px" }}
+                  style={{ maxHeight: "320px" }}
                   onClick={handlePhotoCanvasClick}
                 />
                 <button
@@ -599,11 +639,13 @@ export default function AdminPage() {
               {/* ColorChecker patch grid */}
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-2">
-                  컬러체커 패치 선택 ({checkerPatches.length}/24)
+                  참조 패치 ({checkerPatches.length}/24)
                 </p>
                 <div className="grid grid-cols-6 gap-1.5 max-h-64 overflow-y-auto">
                   {COLORCHECKER_REFERENCE.map((patch, idx) => {
-                    const measured = checkerPatches.find((p) => p.patchIndex === idx);
+                    const measured = checkerPatches.find(
+                      (p) => p.patchIndex === idx,
+                    );
                     return (
                       <button
                         key={idx}
@@ -612,12 +654,14 @@ export default function AdminPage() {
                           selectingPatch === idx
                             ? "border-indigo-500 bg-indigo-50"
                             : measured
-                            ? "border-green-500 bg-green-50"
-                            : "border-gray-200 hover:border-gray-400"
+                              ? "border-green-500 bg-green-50"
+                              : "border-gray-200 hover:border-gray-400"
                         }`}
                         title={patch.name}
                       >
-                        <div className="text-center truncate text-[10px]">{patch.name}</div>
+                        <div className="text-center truncate text-[10px]">
+                          {patch.name}
+                        </div>
                         {measured && (
                           <div
                             className="w-5 h-5 rounded mx-auto mt-0.5"
@@ -632,12 +676,12 @@ export default function AdminPage() {
                 </div>
                 {checkerPatches.length > 0 && checkerPatches.length < 3 && (
                   <p className="text-xs text-amber-600 mt-2">
-                    최소 3개 패치를 선택해야 보정이 적용됩니다.
+                    색 보정을 적용하려면 패치를 3개 이상 선택하세요.
                   </p>
                 )}
                 {checkerPatches.length >= 3 && (
                   <p className="text-xs text-green-600 mt-2">
-                    {checkerPatches.length}개 패치 선택됨 - 색 보정이 적용됩니다.
+                    패치 {checkerPatches.length}개 선택됨. 색 보정이 적용됩니다.
                   </p>
                 )}
               </div>
@@ -647,7 +691,7 @@ export default function AdminPage() {
           {/* Analysis result preview */}
           {analysisResult && (
             <div className="bg-gray-50 rounded-lg p-4 mb-4">
-              <h3 className="text-sm font-semibold mb-3">분석 결과 미리보기</h3>
+              <h3 className="text-sm font-semibold mb-3">추출 결과</h3>
               <div className="flex items-center gap-4">
                 <div
                   className="w-16 h-16 rounded-lg shadow-inner border"
@@ -655,10 +699,12 @@ export default function AdminPage() {
                 />
                 <div className="text-sm">
                   <p className="font-mono">
-                    L*={analysisResult.L_value} a*={analysisResult.a_value} b*={analysisResult.b_value}
+                    L*={analysisResult.L_value} a*={analysisResult.a_value} b*=
+                    {analysisResult.b_value}
                   </p>
                   <p className="text-gray-500">
-                    HEX: {analysisResult.hex_color} | 언더톤: {analysisResult.undertone}
+                    HEX: {analysisResult.hex_color} | 언더톤:{" "}
+                    {analysisResult.undertone}
                   </p>
                 </div>
               </div>
@@ -673,7 +719,7 @@ export default function AdminPage() {
                 disabled={analyzing}
                 className="bg-indigo-600 text-white px-5 py-2 rounded text-sm hover:bg-indigo-700 disabled:opacity-50"
               >
-                {analyzing ? "분석 중..." : "색상 분석"}
+                {analyzing ? "추출 중..." : "색상 추출"}
               </button>
             )}
             {analysisResult && (
@@ -701,7 +747,7 @@ export default function AdminPage() {
               }}
               className="text-gray-500 hover:text-gray-700 px-4 py-2 text-sm"
             >
-              취소
+              닫기
             </button>
           </div>
         </div>
@@ -712,7 +758,7 @@ export default function AdminPage() {
         <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">
-              {editingFoundationId === null ? "파운데이션 수동 추가" : "파운데이션 수정"}
+              {editingFoundationId === null ? "직접 입력" : "파운데이션 수정"}
             </h2>
             <button
               type="button"
@@ -724,86 +770,86 @@ export default function AdminPage() {
           </div>
           <form
             onSubmit={handleCreate}
-            className="grid grid-cols-3 gap-4"
+            className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
           >
-          <input
-            placeholder="브랜드"
-            value={form.brand}
-            onChange={(e) => setForm({ ...form, brand: e.target.value })}
-            className="border rounded px-3 py-2"
-            required
-          />
-          <input
-            placeholder="색상명"
-            value={form.shade_name}
-            onChange={(e) => setForm({ ...form, shade_name: e.target.value })}
-            className="border rounded px-3 py-2"
-            required
-          />
-          <input
-            placeholder="호수 (예: 21호)"
-            value={form.shade_code}
-            onChange={(e) => setForm({ ...form, shade_code: e.target.value })}
-            className="border rounded px-3 py-2"
-          />
-          <input
-            placeholder="L* 값"
-            type="number"
-            step="0.01"
-            value={form.L_value}
-            onChange={(e) =>
-              setForm({ ...form, L_value: parseFloat(e.target.value) || 0 })
-            }
-            className="border rounded px-3 py-2"
-          />
-          <input
-            placeholder="a* 값"
-            type="number"
-            step="0.01"
-            value={form.a_value}
-            onChange={(e) =>
-              setForm({ ...form, a_value: parseFloat(e.target.value) || 0 })
-            }
-            className="border rounded px-3 py-2"
-          />
-          <input
-            placeholder="b* 값"
-            type="number"
-            step="0.01"
-            value={form.b_value}
-            onChange={(e) =>
-              setForm({ ...form, b_value: parseFloat(e.target.value) || 0 })
-            }
-            className="border rounded px-3 py-2"
-          />
-          <input
-            placeholder="HEX (#ff0000)"
-            value={form.hex_color}
-            onChange={(e) => setForm({ ...form, hex_color: e.target.value })}
-            className="border rounded px-3 py-2"
-          />
-          <select
-            value={form.undertone}
-            onChange={(e) => setForm({ ...form, undertone: e.target.value })}
-            className="border rounded px-3 py-2"
-          >
-            <option value="">비워두기</option>
-            <option value="WARM">Warm</option>
-            <option value="COOL">Cool</option>
-            <option value="NEUTRAL">Neutral</option>
-          </select>
-          <button
-            disabled={isSavingManual}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
-          >
-            {isSavingManual
-              ? editingFoundationId === null
-                ? "저장 중..."
-                : "수정 중..."
-              : editingFoundationId === null
-              ? "저장"
-              : "수정 저장"}
-          </button>
+            <input
+              placeholder="브랜드"
+              value={form.brand}
+              onChange={(e) => setForm({ ...form, brand: e.target.value })}
+              className="border rounded px-3 py-2"
+              required
+            />
+            <input
+              placeholder="색상명"
+              value={form.shade_name}
+              onChange={(e) => setForm({ ...form, shade_name: e.target.value })}
+              className="border rounded px-3 py-2"
+              required
+            />
+            <input
+              placeholder="호수 (예: 21호)"
+              value={form.shade_code}
+              onChange={(e) => setForm({ ...form, shade_code: e.target.value })}
+              className="border rounded px-3 py-2"
+            />
+            <input
+              placeholder="L* 값"
+              type="number"
+              step="0.01"
+              value={form.L_value}
+              onChange={(e) =>
+                setForm({ ...form, L_value: parseFloat(e.target.value) || 0 })
+              }
+              className="border rounded px-3 py-2"
+            />
+            <input
+              placeholder="a* 값"
+              type="number"
+              step="0.01"
+              value={form.a_value}
+              onChange={(e) =>
+                setForm({ ...form, a_value: parseFloat(e.target.value) || 0 })
+              }
+              className="border rounded px-3 py-2"
+            />
+            <input
+              placeholder="b* 값"
+              type="number"
+              step="0.01"
+              value={form.b_value}
+              onChange={(e) =>
+                setForm({ ...form, b_value: parseFloat(e.target.value) || 0 })
+              }
+              className="border rounded px-3 py-2"
+            />
+            <input
+              placeholder="HEX (#ff0000)"
+              value={form.hex_color}
+              onChange={(e) => setForm({ ...form, hex_color: e.target.value })}
+              className="border rounded px-3 py-2"
+            />
+            <select
+              value={form.undertone}
+              onChange={(e) => setForm({ ...form, undertone: e.target.value })}
+              className="border rounded px-3 py-2"
+            >
+              <option value="">비워두기</option>
+              <option value="WARM">Warm</option>
+              <option value="COOL">Cool</option>
+              <option value="NEUTRAL">Neutral</option>
+            </select>
+            <button
+              disabled={isSavingManual}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+            >
+              {isSavingManual
+                ? editingFoundationId === null
+                  ? "저장 중..."
+                  : "수정 중..."
+                : editingFoundationId === null
+                  ? "저장"
+                  : "수정 저장"}
+            </button>
           </form>
         </div>
       )}
@@ -811,62 +857,129 @@ export default function AdminPage() {
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-gray-500">
           <p>
-            {filterBrand ? `"${filterBrand}" ` : ""}파운데이션 {foundations.length}개
+            {filterBrand ? `"${filterBrand}" ` : ""}파운데이션{" "}
+            {foundations.length}개
           </p>
           {isLoadingData && <p>최신 목록을 불러오는 중입니다...</p>}
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left">색상</th>
-              <th className="px-4 py-3 text-left">브랜드</th>
-              <th className="px-4 py-3 text-left">이름</th>
-              <th className="px-4 py-3 text-left">L*</th>
-              <th className="px-4 py-3 text-left">a*</th>
-              <th className="px-4 py-3 text-left">b*</th>
-              <th className="px-4 py-3 text-left">언더톤</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {foundations.map((f) => (
-              <tr key={f.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  <div
-                    className="w-8 h-8 rounded border"
-                    style={{ backgroundColor: f.hex_color }}
-                  />
-                </td>
-                <td className="px-4 py-3">{f.brand}</td>
-                <td className="px-4 py-3">
-                  {f.shade_name}
-                  {f.shade_code && (
-                    <span className="text-gray-400 ml-1">({f.shade_code})</span>
+        <div className="divide-y lg:hidden">
+          {foundations.map((f) => (
+            <div key={f.id} className="space-y-3 px-4 py-4">
+              <div className="flex items-start gap-3">
+                <div
+                  className="h-10 w-10 shrink-0 rounded-lg border"
+                  style={{ backgroundColor: f.hex_color }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-900">
+                    {f.brand}
+                  </p>
+                  <p className="truncate text-sm text-gray-700">
+                    {f.shade_name}
+                    {f.shade_code && (
+                      <span className="ml-1 text-gray-400">
+                        ({f.shade_code})
+                      </span>
+                    )}
+                  </p>
+                  {f.product_name && (
+                    <p className="truncate text-xs text-gray-400">
+                      {f.product_name}
+                    </p>
                   )}
-                </td>
-                <td className="px-4 py-3 font-mono">{f.L_value}</td>
-                <td className="px-4 py-3 font-mono">{f.a_value}</td>
-                <td className="px-4 py-3 font-mono">{f.b_value}</td>
-                <td className="px-4 py-3">{f.undertone || "-"}</td>
-                <td className="px-4 py-3">
+                </div>
+                <span className="rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-600">
+                  {f.undertone || "-"}
+                </span>
+              </div>
+              <div className="rounded-lg bg-gray-50 px-3 py-2 font-mono text-[11px] text-gray-600">
+                L* {f.L_value} / a* {f.a_value} / b* {f.b_value}
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-mono text-gray-400">{f.hex_color}</span>
+                <div className="flex items-center gap-3">
                   <button
                     onClick={() => openEditForm(f)}
-                    className="text-blue-600 hover:text-blue-800 text-xs mr-3"
+                    className="text-blue-600 hover:text-blue-800"
                   >
                     수정
                   </button>
                   <button
                     onClick={() => handleDelete(f.id)}
                     disabled={deletingId === f.id}
-                    className="text-red-500 hover:text-red-700 text-xs disabled:opacity-50"
+                    className="text-red-500 hover:text-red-700 disabled:opacity-50"
                   >
                     {deletingId === f.id ? "삭제 중..." : "삭제"}
                   </button>
-                </td>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden lg:block">
+          <table className="w-full table-fixed text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="w-16 px-4 py-3 text-left">색상</th>
+                <th className="w-[32%] px-4 py-3 text-left">브랜드 / 색상</th>
+                <th className="w-[24%] px-4 py-3 text-left">LAB</th>
+                <th className="w-20 px-4 py-3 text-left">톤</th>
+                <th className="w-28 px-4 py-3 text-left">HEX</th>
+                <th className="w-24 px-4 py-3"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y">
+              {foundations.map((f) => (
+                <tr key={f.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div
+                      className="h-8 w-8 rounded border"
+                      style={{ backgroundColor: f.hex_color }}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="truncate font-medium text-gray-900">
+                      {f.brand}
+                    </p>
+                    <p className="truncate text-gray-700">
+                      {f.shade_name}
+                      {f.shade_code && (
+                        <span className="ml-1 text-gray-400">
+                          ({f.shade_code})
+                        </span>
+                      )}
+                    </p>
+                    {f.product_name && (
+                      <p className="truncate text-xs text-gray-400">
+                        {f.product_name}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">
+                    L* {f.L_value} / a* {f.a_value} / b* {f.b_value}
+                  </td>
+                  <td className="px-4 py-3">{f.undertone || "-"}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{f.hex_color}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <button
+                      onClick={() => openEditForm(f)}
+                      className="mr-3 text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => handleDelete(f.id)}
+                      disabled={deletingId === f.id}
+                      className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                    >
+                      {deletingId === f.id ? "삭제 중..." : "삭제"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {!isLoadingData && foundations.length === 0 && (
           <p className="text-center text-gray-400 py-8">
             등록된 파운데이션이 없습니다.
