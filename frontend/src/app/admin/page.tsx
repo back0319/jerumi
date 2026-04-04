@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { apiGet, apiAuthPost, apiAuthDelete, apiAuthPostFormData } from "@/lib/api";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import {
+  apiGet,
+  apiFormPost,
+  apiAuthPost,
+  apiAuthDelete,
+  apiAuthPostFormData,
+} from "@/lib/api";
 import {
   COLORCHECKER_REFERENCE,
   type MeasuredPatch,
@@ -9,20 +15,8 @@ import {
 } from "@/lib/colorChecker";
 import type { Foundation, FoundationAnalysisResult } from "@/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-export default function AdminPage() {
-  const [token, setToken] = useState<string | null>(null);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [foundations, setFoundations] = useState<Foundation[]>([]);
-  const [brands, setBrands] = useState<string[]>([]);
-  const [filterBrand, setFilterBrand] = useState<string>("");
-
-  // New foundation form (manual)
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
+function createDefaultManualForm() {
+  return {
     brand: "",
     shade_name: "",
     shade_code: "",
@@ -32,18 +26,58 @@ export default function AdminPage() {
     b_value: 0,
     hex_color: "#000000",
     undertone: "NEUTRAL",
+  };
+}
+
+function createDefaultPhotoMeta() {
+  return {
+    brand: "",
+    product_name: "",
+    shade_name: "",
+    shade_code: "",
+  };
+}
+
+function sortFoundations(items: readonly Foundation[]) {
+  return [...items].sort((left, right) => {
+    const byBrand = left.brand.localeCompare(right.brand, "ko");
+    if (byBrand !== 0) {
+      return byBrand;
+    }
+
+    return left.shade_name.localeCompare(right.shade_name, "ko");
   });
+}
+
+function buildBrandList(items: readonly Foundation[]) {
+  return Array.from(new Set(items.map((item) => item.brand))).sort((left, right) =>
+    left.localeCompare(right, "ko")
+  );
+}
+
+export default function AdminPage() {
+  const [token, setToken] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [allFoundations, setAllFoundations] = useState<Foundation[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [listError, setListError] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const [isSavingPhoto, setIsSavingPhoto] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [filterBrand, setFilterBrand] = useState<string>("");
+
+  // New foundation form (manual)
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(createDefaultManualForm);
 
   // Photo analysis form
   const [showPhotoForm, setShowPhotoForm] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoMeta, setPhotoMeta] = useState({
-    brand: "",
-    product_name: "",
-    shade_name: "",
-    shade_code: "",
-  });
+  const [photoMeta, setPhotoMeta] = useState(createDefaultPhotoMeta);
   const [analysisResult, setAnalysisResult] = useState<FoundationAnalysisResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -53,50 +87,119 @@ export default function AdminPage() {
   const [selectingPatch, setSelectingPatch] = useState<number | null>(null);
   const photoCanvasRef = useRef<HTMLCanvasElement>(null);
   const photoImgRef = useRef<HTMLImageElement>(null);
+  const brands = buildBrandList(allFoundations);
+  const foundations = filterBrand
+    ? allFoundations.filter((foundation) => foundation.brand === filterBrand)
+    : allFoundations;
+
+  const resetPhotoState = useCallback(() => {
+    setPhotoFile(null);
+    setPhotoPreview((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return null;
+    });
+    setAnalysisResult(null);
+    setCheckerPatches([]);
+    setSelectingPatch(null);
+    setPhotoMeta(createDefaultPhotoMeta());
+    setPhotoError(null);
+  }, []);
+
+  const loadFoundations = useCallback(async () => {
+    setIsLoadingData(true);
+    setListError("");
+
+    try {
+      const foundationList = await apiGet<Foundation[]>("/api/foundations");
+      startTransition(() => {
+        setAllFoundations(sortFoundations(foundationList));
+      });
+    } catch {
+      setListError("파운데이션 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
+    setIsLoggingIn(true);
+
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ username, password }),
-      });
-      if (!res.ok) throw new Error("인증 실패");
-      const data = await res.json();
+      const data = await apiFormPost<{ access_token: string }>(
+        "/api/auth/login",
+        new URLSearchParams({ username, password })
+      );
       setToken(data.access_token);
     } catch {
       setLoginError("아이디 또는 비밀번호가 올바르지 않습니다.");
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
-  const loadData = useCallback(async () => {
-    const b = await apiGet<string[]>("/api/foundations/brands");
-    setBrands(b);
-    const url = filterBrand
-      ? `/api/foundations?brand=${encodeURIComponent(filterBrand)}`
-      : "/api/foundations";
-    const f = await apiGet<Foundation[]>(url);
-    setFoundations(f);
-  }, [filterBrand]);
+  useEffect(() => {
+    if (token) {
+      void loadFoundations();
+    }
+  }, [token, loadFoundations]);
 
   useEffect(() => {
-    if (token) loadData();
-  }, [token, loadData]);
+    if (filterBrand && !allFoundations.some((foundation) => foundation.brand === filterBrand)) {
+      setFilterBrand("");
+    }
+  }, [allFoundations, filterBrand]);
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
-    await apiAuthPost("/api/foundations", form, token);
-    setShowForm(false);
-    loadData();
+    setIsSavingManual(true);
+    setListError("");
+
+    try {
+      const created = await apiAuthPost<Foundation>("/api/foundations", form, token);
+      startTransition(() => {
+        setAllFoundations((prev) => sortFoundations([...prev, created]));
+        setShowForm(false);
+        setForm(createDefaultManualForm());
+        if (filterBrand && filterBrand !== created.brand) {
+          setFilterBrand(created.brand);
+        }
+      });
+    } catch {
+      setListError("테스트 데이터를 저장하지 못했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsSavingManual(false);
+    }
   };
 
   const handleDelete = async (id: number) => {
     if (!token || !confirm("정말 삭제하시겠습니까?")) return;
-    await apiAuthDelete(`/api/foundations/${id}`, token);
-    loadData();
+    setDeletingId(id);
+    setListError("");
+
+    try {
+      await apiAuthDelete(`/api/foundations/${id}`, token);
+      const nextFoundations = allFoundations.filter((foundation) => foundation.id !== id);
+      startTransition(() => {
+        setAllFoundations(nextFoundations);
+      });
+    } catch {
+      setListError("데이터를 삭제하지 못했습니다. 다시 시도해주세요.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   // Photo analysis handlers
@@ -109,7 +212,12 @@ export default function AdminPage() {
     }
     setPhotoError(null);
     setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoPreview((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return URL.createObjectURL(file);
+    });
     setAnalysisResult(null);
     setCheckerPatches([]);
     setSelectingPatch(null);
@@ -207,6 +315,8 @@ export default function AdminPage() {
       return;
     }
     setPhotoError(null);
+    setIsSavingPhoto(true);
+    setListError("");
 
     try {
       const formData = new FormData();
@@ -221,22 +331,24 @@ export default function AdminPage() {
         formData.append("checker_patches", JSON.stringify(patches));
       }
 
-      await apiAuthPostFormData<Foundation>(
+      const created = await apiAuthPostFormData<Foundation>(
         "/api/foundations/from-photo",
         formData,
         token
       );
 
-      // Reset form and reload
-      setShowPhotoForm(false);
-      setPhotoFile(null);
-      setPhotoPreview(null);
-      setAnalysisResult(null);
-      setCheckerPatches([]);
-      setPhotoMeta({ brand: "", product_name: "", shade_name: "", shade_code: "" });
-      loadData();
+      startTransition(() => {
+        setAllFoundations((prev) => sortFoundations([...prev, created]));
+        setShowPhotoForm(false);
+        resetPhotoState();
+        if (filterBrand && filterBrand !== created.brand) {
+          setFilterBrand(created.brand);
+        }
+      });
     } catch (err: any) {
       setPhotoError(err.message || "저장 중 오류가 발생했습니다.");
+    } finally {
+      setIsSavingPhoto(false);
     }
   };
 
@@ -262,8 +374,11 @@ export default function AdminPage() {
             onChange={(e) => setPassword(e.target.value)}
             className="w-full border rounded px-3 py-2"
           />
-          <button className="w-full bg-rose-600 text-white py-2 rounded hover:bg-rose-700">
-            로그인
+          <button
+            disabled={isLoggingIn}
+            className="w-full bg-rose-600 text-white py-2 rounded hover:bg-rose-700 disabled:opacity-50"
+          >
+            {isLoggingIn ? "로그인 중..." : "로그인"}
           </button>
         </form>
       </div>
@@ -278,6 +393,7 @@ export default function AdminPage() {
           <select
             value={filterBrand}
             onChange={(e) => setFilterBrand(e.target.value)}
+            disabled={isLoadingData}
             className="border rounded px-3 py-1.5 text-sm"
           >
             <option value="">전체 브랜드</option>
@@ -287,6 +403,13 @@ export default function AdminPage() {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => void loadFoundations()}
+            disabled={isLoadingData}
+            className="border border-gray-200 bg-white px-4 py-1.5 rounded text-sm hover:bg-gray-50 disabled:opacity-50"
+          >
+            {isLoadingData ? "동기화 중..." : "새로고침"}
+          </button>
           <button
             onClick={() => {
               setShowPhotoForm(!showPhotoForm);
@@ -307,6 +430,12 @@ export default function AdminPage() {
           </button>
         </div>
       </div>
+
+      {listError && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {listError}
+        </div>
+      )}
 
       {/* Photo Analysis Form */}
       {showPhotoForm && (
@@ -392,11 +521,7 @@ export default function AdminPage() {
                 />
                 <button
                   onClick={() => {
-                    setPhotoFile(null);
-                    setPhotoPreview(null);
-                    setAnalysisResult(null);
-                    setCheckerPatches([]);
-                    setSelectingPatch(null);
+                    resetPhotoState();
                   }}
                   className="text-xs text-gray-400 hover:text-gray-600 mt-1"
                 >
@@ -488,9 +613,10 @@ export default function AdminPage() {
               <>
                 <button
                   onClick={handleSaveFromPhoto}
+                  disabled={isSavingPhoto}
                   className="bg-green-600 text-white px-5 py-2 rounded text-sm hover:bg-green-700"
                 >
-                  DB에 저장
+                  {isSavingPhoto ? "저장 중..." : "DB에 저장"}
                 </button>
                 <button
                   onClick={handleAnalyzeSwatch}
@@ -504,11 +630,7 @@ export default function AdminPage() {
             <button
               onClick={() => {
                 setShowPhotoForm(false);
-                setPhotoFile(null);
-                setPhotoPreview(null);
-                setAnalysisResult(null);
-                setCheckerPatches([]);
-                setPhotoMeta({ brand: "", product_name: "", shade_name: "", shade_code: "" });
+                resetPhotoState();
               }}
               className="text-gray-500 hover:text-gray-700 px-4 py-2 text-sm"
             >
@@ -589,13 +711,22 @@ export default function AdminPage() {
             <option value="COOL">Cool</option>
             <option value="NEUTRAL">Neutral</option>
           </select>
-          <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-            저장
+          <button
+            disabled={isSavingManual}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+          >
+            {isSavingManual ? "저장 중..." : "저장"}
           </button>
         </form>
       )}
 
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-gray-500">
+          <p>
+            {filterBrand ? `"${filterBrand}" ` : ""}파운데이션 {foundations.length}개
+          </p>
+          {isLoadingData && <p>최신 목록을 불러오는 중입니다...</p>}
+        </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -632,16 +763,17 @@ export default function AdminPage() {
                 <td className="px-4 py-3">
                   <button
                     onClick={() => handleDelete(f.id)}
-                    className="text-red-500 hover:text-red-700 text-xs"
+                    disabled={deletingId === f.id}
+                    className="text-red-500 hover:text-red-700 text-xs disabled:opacity-50"
                   >
-                    삭제
+                    {deletingId === f.id ? "삭제 중..." : "삭제"}
                   </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {foundations.length === 0 && (
+        {!isLoadingData && foundations.length === 0 && (
           <p className="text-center text-gray-400 py-8">
             등록된 파운데이션이 없습니다.
           </p>

@@ -33,6 +33,26 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export async function apiFormPost<T>(
+  path: string,
+  body: URLSearchParams,
+  headers?: HeadersInit
+): Promise<T> {
+  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...headers,
+    },
+    body,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`API error ${res.status}: ${err}`);
+  }
+  return res.json();
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetchWithTimeout(`${API_URL}${path}`);
   if (!res.ok) throw new Error(`API error ${res.status}`);
