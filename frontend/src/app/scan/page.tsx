@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiPost } from "@/lib/api";
 import {
+  buildRegionPolygons,
   extractSkinPixels,
+  type FaceRegionPolygon,
   SKIN_REGIONS,
 } from "@/lib/facemesh";
 import {
@@ -16,6 +18,48 @@ import CameraCapture from "@/components/CameraCapture";
 
 type Step = "upload" | "camera" | "checker" | "analyzing" | "done";
 type CheckerImageStatus = "idle" | "loading" | "ready" | "error";
+type OverlayMode = "facemesh" | "fallback";
+
+type AnalysisOverlay = {
+  mode: OverlayMode;
+  pixelCount: number;
+  sampleHex: string;
+  polygons: FaceRegionPolygon[];
+  fallbackRect?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
+
+const OVERLAY_FILL = "rgba(244, 63, 94, 0.22)";
+const OVERLAY_STROKE = "#e11d48";
+const FALLBACK_FILL = "rgba(59, 130, 246, 0.18)";
+const FALLBACK_STROKE = "#2563eb";
+
+function averagePixelsToHex(pixels: number[][]): string {
+  if (pixels.length === 0) return "#000000";
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  for (const pixel of pixels) {
+    r += pixel[0];
+    g += pixel[1];
+    b += pixel[2];
+  }
+
+  const count = pixels.length;
+  const avgR = Math.round(r / count);
+  const avgG = Math.round(g / count);
+  const avgB = Math.round(b / count);
+
+  return `#${avgR.toString(16).padStart(2, "0")}${avgG
+    .toString(16)
+    .padStart(2, "0")}${avgB.toString(16).padStart(2, "0")}`;
+}
 
 export default function ScanPage() {
   const FACE_MESH_TIMEOUT_MS = 8000;
@@ -31,12 +75,16 @@ export default function ScanPage() {
   const [checkerImageError, setCheckerImageError] = useState<string | null>(
     null
   );
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const processingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const checkerImgRef = useRef<HTMLImageElement>(null);
   const uploadedObjectUrlRef = useRef<string | null>(null);
   const detectionTimeoutRef = useRef<number | null>(null);
   const detectionCompletedRef = useRef(false);
+  const [analysisOverlay, setAnalysisOverlay] = useState<AnalysisOverlay | null>(
+    null
+  );
 
   const revokeUploadedObjectUrl = useCallback(() => {
     if (!uploadedObjectUrlRef.current) return;
@@ -57,6 +105,64 @@ export default function ScanPage() {
     []
   );
 
+  const redrawPreviewCanvas = useCallback((overlay: AnalysisOverlay | null) => {
+    const sourceCanvas = processingCanvasRef.current;
+    const previewCanvas = previewCanvasRef.current;
+    if (!sourceCanvas || !previewCanvas) return;
+
+    previewCanvas.width = sourceCanvas.width;
+    previewCanvas.height = sourceCanvas.height;
+
+    const ctx = previewCanvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    ctx.drawImage(sourceCanvas, 0, 0);
+
+    if (!overlay) return;
+
+    const fillColor = overlay.mode === "facemesh" ? OVERLAY_FILL : FALLBACK_FILL;
+    const strokeColor =
+      overlay.mode === "facemesh" ? OVERLAY_STROKE : FALLBACK_STROKE;
+
+    ctx.save();
+    ctx.lineWidth = Math.max(2, previewCanvas.width / 320);
+    ctx.strokeStyle = strokeColor;
+    ctx.fillStyle = fillColor;
+
+    for (const polygon of overlay.polygons) {
+      if (polygon.points.length === 0) continue;
+
+      ctx.beginPath();
+      ctx.moveTo(polygon.points[0].x, polygon.points[0].y);
+      for (const point of polygon.points.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    if (overlay.fallbackRect) {
+      ctx.strokeStyle = FALLBACK_STROKE;
+      ctx.fillStyle = FALLBACK_FILL;
+      ctx.fillRect(
+        overlay.fallbackRect.x,
+        overlay.fallbackRect.y,
+        overlay.fallbackRect.width,
+        overlay.fallbackRect.height
+      );
+      ctx.strokeRect(
+        overlay.fallbackRect.x,
+        overlay.fallbackRect.y,
+        overlay.fallbackRect.width,
+        overlay.fallbackRect.height
+      );
+    }
+
+    ctx.restore();
+  }, []);
+
   const clearDetectionTimeout = useCallback(() => {
     if (detectionTimeoutRef.current === null) return;
     window.clearTimeout(detectionTimeoutRef.current);
@@ -64,14 +170,20 @@ export default function ScanPage() {
   }, []);
 
   const completeSkinExtraction = useCallback(
-    (pixels: number[][], nextError: string | null = null) => {
+    (
+      pixels: number[][],
+      overlay: AnalysisOverlay,
+      nextError: string | null = null
+    ) => {
       detectionCompletedRef.current = true;
       clearDetectionTimeout();
       setSkinPixels(pixels);
+      setAnalysisOverlay(overlay);
+      redrawPreviewCanvas(overlay);
       setError(nextError);
       setStep("checker");
     },
-    [clearDetectionTimeout]
+    [clearDetectionTimeout, redrawPreviewCanvas]
   );
 
   const handleImageUpload = useCallback(
@@ -84,6 +196,7 @@ export default function ScanPage() {
       }
       revokeUploadedObjectUrl();
       setError(null);
+      setAnalysisOverlay(null);
       const url = URL.createObjectURL(file);
       uploadedObjectUrlRef.current = url;
       setImageUrl(url);
@@ -97,19 +210,21 @@ export default function ScanPage() {
 
   const handleImageLoad = useCallback(() => {
     const img = imgRef.current;
-    const canvas = canvasRef.current;
+    const canvas = processingCanvasRef.current;
     if (!img || !canvas) return;
 
     const drawn = drawImageToCanvas(img, canvas);
     if (!drawn) return;
 
+    redrawPreviewCanvas(null);
     processImageOnCanvas(canvas);
-  }, [drawImageToCanvas, processImageOnCanvas]);
+  }, [drawImageToCanvas, processImageOnCanvas, redrawPreviewCanvas]);
 
   const handleCameraCapture = useCallback(
     (dataUrl: string) => {
       revokeUploadedObjectUrl();
       setError(null);
+      setAnalysisOverlay(null);
       setImageUrl(dataUrl);
       setStep("upload");
     },
@@ -118,7 +233,7 @@ export default function ScanPage() {
 
   const handleCheckerImageLoad = useCallback(() => {
     const img = checkerImgRef.current;
-    const canvas = canvasRef.current;
+    const canvas = processingCanvasRef.current;
     if (!img || !canvas) return;
 
     const drawn = drawImageToCanvas(img, canvas);
@@ -128,9 +243,10 @@ export default function ScanPage() {
       return;
     }
 
+    redrawPreviewCanvas(analysisOverlay);
     setCheckerImageStatus("ready");
     setCheckerImageError(null);
-  }, [drawImageToCanvas]);
+  }, [analysisOverlay, drawImageToCanvas, redrawPreviewCanvas]);
 
   const handleCheckerImageError = useCallback(() => {
     setCheckerImageStatus("error");
@@ -174,7 +290,37 @@ export default function ScanPage() {
         return;
       }
 
-      completeSkinExtraction(pixels, nextError);
+      completeSkinExtraction(
+        pixels,
+        {
+          mode: "fallback",
+          pixelCount: pixels.length,
+          sampleHex: averagePixelsToHex(pixels),
+          polygons: [
+            {
+              points: [
+                { x: cx, y: cy },
+                { x: cx + cw, y: cy },
+                { x: cx + cw, y: cy + ch },
+                { x: cx, y: cy + ch },
+              ],
+              bounds: {
+                minX: cx,
+                minY: cy,
+                maxX: cx + cw,
+                maxY: cy + ch,
+              },
+            },
+          ],
+          fallbackRect: {
+            x: cx,
+            y: cy,
+            width: cw,
+            height: ch,
+          },
+        },
+        nextError
+      );
     },
     [clearDetectionTimeout, completeSkinExtraction]
   );
@@ -216,6 +362,7 @@ export default function ScanPage() {
 
         const landmarks = results.multiFaceLandmarks[0];
         const pixels = extractSkinPixels(canvas, landmarks, SKIN_REGIONS);
+        const polygons = buildRegionPolygons(canvas, landmarks, SKIN_REGIONS);
 
         if (pixels.length < 100) {
           fallbackExtract(
@@ -225,7 +372,12 @@ export default function ScanPage() {
           return;
         }
 
-        completeSkinExtraction(pixels);
+        completeSkinExtraction(pixels, {
+          mode: "facemesh",
+          pixelCount: pixels.length,
+          sampleHex: averagePixelsToHex(pixels),
+          polygons,
+        });
       });
 
       await faceMesh.send({ image: canvas });
@@ -238,9 +390,10 @@ export default function ScanPage() {
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (selectingPatch === null) return;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
+      const canvas = processingCanvasRef.current;
+      const previewCanvas = previewCanvasRef.current;
+      if (!canvas || !previewCanvas) return;
+      const rect = previewCanvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
       const x = Math.round((e.clientX - rect.left) * scaleX);
@@ -319,6 +472,7 @@ export default function ScanPage() {
     setStep("upload");
     setImageUrl(null);
     setSkinPixels(null);
+    setAnalysisOverlay(null);
     setCheckerPatches([]);
     setSelectingPatch(null);
     setCheckerImageStatus("idle");
@@ -331,6 +485,7 @@ export default function ScanPage() {
     setStep("upload");
     setImageUrl(null);
     setSkinPixels(null);
+    setAnalysisOverlay(null);
     setCheckerPatches([]);
     setSelectingPatch(null);
     setResult(null);
@@ -344,6 +499,7 @@ export default function ScanPage() {
     setSelectingPatch(null);
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
+    setAnalysisOverlay(null);
   }, [imageUrl]);
 
   useEffect(() => {
@@ -432,13 +588,19 @@ export default function ScanPage() {
               ref={imgRef}
               src={imageUrl}
               alt="업로드된 얼굴"
-              className="max-w-full max-h-96 mx-auto rounded"
+              className="hidden"
               onLoad={handleImageLoad}
             />
-            <canvas ref={canvasRef} className="hidden" />
+            <canvas
+              ref={previewCanvasRef}
+              className="max-w-full max-h-96 mx-auto rounded border"
+            />
+            <canvas ref={processingCanvasRef} className="hidden" />
             <div className="mt-4">
               <div className="animate-spin w-8 h-8 border-4 border-rose-200 border-t-rose-600 rounded-full mx-auto mb-2" />
-              <p className="text-sm text-gray-500">얼굴을 인식하고 있습니다...</p>
+              <p className="text-sm text-gray-500">
+                얼굴과 피부 분석 영역을 계산하고 있습니다...
+              </p>
             </div>
           </div>
         </div>
@@ -451,7 +613,6 @@ export default function ScanPage() {
             onCapture={handleCameraCapture}
             onCancel={() => setStep("upload")}
           />
-          <canvas ref={canvasRef} className="hidden" />
         </>
       )}
 
@@ -480,11 +641,12 @@ export default function ScanPage() {
                 onError={handleCheckerImageError}
               />
               <canvas
-                ref={canvasRef}
+                ref={previewCanvasRef}
                 className="max-w-full border rounded cursor-crosshair"
                 style={{ maxHeight: "400px" }}
                 onClick={handleCanvasClick}
               />
+              <canvas ref={processingCanvasRef} className="hidden" />
               {checkerImageStatus === "loading" && (
                 <p className="text-sm text-gray-500 mt-2">
                   보정용 사진을 불러오고 있습니다...
@@ -498,6 +660,34 @@ export default function ScanPage() {
                   &quot;{COLORCHECKER_REFERENCE[selectingPatch].name}&quot;
                   패치를 사진에서 클릭하세요
                 </p>
+              )}
+              {analysisOverlay && (
+                <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-left">
+                  <p className="text-sm font-semibold text-gray-800">
+                    얼굴/피부 추출 시각화
+                  </p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    감지 방식:{" "}
+                    {analysisOverlay.mode === "facemesh"
+                      ? "Face Mesh 피부 영역"
+                      : "중앙 fallback 영역"}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    추출 픽셀 수: {analysisOverlay.pixelCount.toLocaleString()}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                    <span>대표 샘플 색상:</span>
+                    <span
+                      className="inline-block h-5 w-5 rounded border border-black/10"
+                      style={{ backgroundColor: analysisOverlay.sampleHex }}
+                    />
+                    <span className="font-mono">{analysisOverlay.sampleHex}</span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">
+                    이미지 위 분홍색 영역이 실제 피부 픽셀 추출 범위입니다.
+                    fallback인 경우 파란 사각형으로 표시됩니다.
+                  </p>
+                </div>
               )}
             </div>
 

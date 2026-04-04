@@ -25,6 +25,50 @@ export const CHIN = [152, 148, 176, 149, 150, 136, 172, 58, 215, 138, 135, 169, 
 // All skin ROI regions combined
 export const SKIN_REGIONS = [LEFT_CHEEK, RIGHT_CHEEK];
 
+export interface FaceRegionPoint {
+  x: number;
+  y: number;
+}
+
+export interface FaceRegionPolygon {
+  points: FaceRegionPoint[];
+  bounds: {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  };
+}
+
+export function buildRegionPolygons(
+  canvas: HTMLCanvasElement,
+  landmarks: { x: number; y: number }[],
+  regions: number[][] = SKIN_REGIONS
+): FaceRegionPolygon[] {
+  const w = canvas.width;
+  const h = canvas.height;
+
+  return regions.map((region) => {
+    const points = region.map((idx) => ({
+      x: Math.round(landmarks[idx].x * w),
+      y: Math.round(landmarks[idx].y * h),
+    }));
+
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+
+    return {
+      points,
+      bounds: {
+        minX: Math.max(0, Math.min(...xs)),
+        minY: Math.max(0, Math.min(...ys)),
+        maxX: Math.min(w - 1, Math.max(...xs)),
+        maxY: Math.min(h - 1, Math.max(...ys)),
+      },
+    };
+  });
+}
+
 /**
  * Extract pixel RGB values from face image within the given landmark polygons.
  */
@@ -40,25 +84,14 @@ export function extractSkinPixels(
   const h = canvas.height;
   const imageData = ctx.getImageData(0, 0, w, h);
   const pixels: number[][] = [];
+  const polygons = buildRegionPolygons(canvas, landmarks, regions);
 
-  for (const region of regions) {
-    // Create polygon points
-    const points = region.map((idx) => ({
-      x: Math.round(landmarks[idx].x * w),
-      y: Math.round(landmarks[idx].y * h),
-    }));
-
-    // Get bounding box
-    const xs = points.map((p) => p.x);
-    const ys = points.map((p) => p.y);
-    const minX = Math.max(0, Math.min(...xs));
-    const maxX = Math.min(w - 1, Math.max(...xs));
-    const minY = Math.max(0, Math.min(...ys));
-    const maxY = Math.min(h - 1, Math.max(...ys));
+  for (const polygon of polygons) {
+    const { points, bounds } = polygon;
 
     // Check each pixel in bounding box
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
+    for (let y = bounds.minY; y <= bounds.maxY; y++) {
+      for (let x = bounds.minX; x <= bounds.maxX; x++) {
         if (isPointInPolygon(x, y, points)) {
           const idx = (y * w + x) * 4;
           pixels.push([
