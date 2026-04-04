@@ -18,6 +18,7 @@ type Step = "upload" | "camera" | "checker" | "analyzing" | "done";
 type CheckerImageStatus = "idle" | "loading" | "ready" | "error";
 
 export default function ScanPage() {
+  const FACE_MESH_TIMEOUT_MS = 8000;
   const [step, setStep] = useState<Step>("upload");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
@@ -34,6 +35,8 @@ export default function ScanPage() {
   const imgRef = useRef<HTMLImageElement>(null);
   const checkerImgRef = useRef<HTMLImageElement>(null);
   const uploadedObjectUrlRef = useRef<string | null>(null);
+  const detectionTimeoutRef = useRef<number | null>(null);
+  const detectionCompletedRef = useRef(false);
 
   const revokeUploadedObjectUrl = useCallback(() => {
     if (!uploadedObjectUrlRef.current) return;
@@ -52,6 +55,23 @@ export default function ScanPage() {
       return true;
     },
     []
+  );
+
+  const clearDetectionTimeout = useCallback(() => {
+    if (detectionTimeoutRef.current === null) return;
+    window.clearTimeout(detectionTimeoutRef.current);
+    detectionTimeoutRef.current = null;
+  }, []);
+
+  const completeSkinExtraction = useCallback(
+    (pixels: number[][], nextError: string | null = null) => {
+      detectionCompletedRef.current = true;
+      clearDetectionTimeout();
+      setSkinPixels(pixels);
+      setError(nextError);
+      setStep("checker");
+    },
+    [clearDetectionTimeout]
   );
 
   const handleImageUpload = useCallback(
@@ -117,8 +137,56 @@ export default function ScanPage() {
     setCheckerImageError("사진을 불러오지 못했습니다. 다른 사진으로 다시 시도해주세요.");
   }, []);
 
+  const fallbackExtract = useCallback(
+    (
+      canvas: HTMLCanvasElement,
+      nextError = "얼굴 자동 인식이 지연되어 중앙 영역으로 계속 진행합니다."
+    ) => {
+      if (detectionCompletedRef.current) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setError("이미지를 처리하지 못했습니다. 다시 시도해주세요.");
+        return;
+      }
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = Math.round(w * 0.35);
+      const cy = Math.round(h * 0.3);
+      const cw = Math.round(w * 0.3);
+      const ch = Math.round(h * 0.3);
+      const imageData = ctx.getImageData(cx, cy, cw, ch);
+      const pixels: number[][] = [];
+
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        pixels.push([
+          imageData.data[i],
+          imageData.data[i + 1],
+          imageData.data[i + 2],
+        ]);
+      }
+
+      if (pixels.length < 100) {
+        detectionCompletedRef.current = true;
+        clearDetectionTimeout();
+        setError("피부 영역을 추출하지 못했습니다. 다른 사진으로 다시 시도해주세요.");
+        return;
+      }
+
+      completeSkinExtraction(pixels, nextError);
+    },
+    [clearDetectionTimeout, completeSkinExtraction]
+  );
+
   const loadFaceMeshAndExtract = async (canvas: HTMLCanvasElement) => {
     try {
+      detectionCompletedRef.current = false;
+      clearDetectionTimeout();
+      detectionTimeoutRef.current = window.setTimeout(() => {
+        fallbackExtract(canvas);
+      }, FACE_MESH_TIMEOUT_MS);
+
       // @ts-ignore - MediaPipe loaded from CDN
       const { FaceMesh } = await import("@mediapipe/face_mesh");
       const faceMesh = new FaceMesh({
@@ -133,11 +201,16 @@ export default function ScanPage() {
       });
 
       faceMesh.onResults((results: any) => {
+        if (detectionCompletedRef.current) return;
+
         if (
           !results.multiFaceLandmarks ||
           results.multiFaceLandmarks.length === 0
         ) {
-          setError("얼굴을 감지하지 못했습니다. 정면 얼굴 사진을 사용해주세요.");
+          fallbackExtract(
+            canvas,
+            "얼굴을 감지하지 못해 중앙 영역 기준으로 계속 진행합니다."
+          );
           return;
         }
 
@@ -145,12 +218,14 @@ export default function ScanPage() {
         const pixels = extractSkinPixels(canvas, landmarks, SKIN_REGIONS);
 
         if (pixels.length < 100) {
-          setError("피부 영역 픽셀이 너무 적습니다. 더 가까이서 촬영해주세요.");
+          fallbackExtract(
+            canvas,
+            "피부 영역 픽셀이 적어 중앙 영역 기준으로 계속 진행합니다."
+          );
           return;
         }
 
-        setSkinPixels(pixels);
-        setStep("checker");
+        completeSkinExtraction(pixels);
       });
 
       await faceMesh.send({ image: canvas });
@@ -158,28 +233,6 @@ export default function ScanPage() {
       console.warn("MediaPipe Face Mesh 로딩 실패, 전체 이미지 중앙 영역 사용:", err);
       fallbackExtract(canvas);
     }
-  };
-
-  const fallbackExtract = (canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const w = canvas.width;
-    const h = canvas.height;
-    const cx = Math.round(w * 0.35);
-    const cy = Math.round(h * 0.3);
-    const cw = Math.round(w * 0.3);
-    const ch = Math.round(h * 0.3);
-    const imageData = ctx.getImageData(cx, cy, cw, ch);
-    const pixels: number[][] = [];
-    for (let i = 0; i < imageData.data.length; i += 4) {
-      pixels.push([
-        imageData.data[i],
-        imageData.data[i + 1],
-        imageData.data[i + 2],
-      ]);
-    }
-    setSkinPixels(pixels);
-    setStep("checker");
   };
 
   const handleCanvasClick = useCallback(
@@ -305,10 +358,18 @@ export default function ScanPage() {
   }, [step, imageUrl]);
 
   useEffect(() => {
+    if (step !== "checker") return;
+    const img = checkerImgRef.current;
+    if (!img || !img.complete) return;
+    handleCheckerImageLoad();
+  }, [handleCheckerImageLoad, imageUrl, step]);
+
+  useEffect(() => {
     return () => {
+      clearDetectionTimeout();
       revokeUploadedObjectUrl();
     };
-  }, [revokeUploadedObjectUrl]);
+  }, [clearDetectionTimeout, revokeUploadedObjectUrl]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
