@@ -6,11 +6,10 @@
 
 - Repository: `https://github.com/back0319/skinmatch`
 - Service type: Railway `Empty Service` 또는 `Connect Repo`
-- Root Directory: `/backend`
-- Build method: `backend/Dockerfile`
+- Build method: `backend/Dockerfile` via repo-root `railway.toml`
 - Database: Supabase Postgres (created via Vercel Storage)
 
-`backend` 디렉토리에 `Dockerfile`이 있으므로, Railway 서비스의 Root Directory를 `/backend`로 지정하면 Dockerfile이 자동으로 사용됩니다.
+리포 루트에 `railway.toml`을 추가해 두었기 때문에, Railway에서 `Root Directory`가 보이지 않더라도 `backend/Dockerfile`과 `/health` 체크 경로를 코드 기준으로 사용할 수 있습니다.
 
 ## 배포 구조
 
@@ -50,8 +49,9 @@ DATABASE_URL=postgresql+asyncpg://postgres.<project-ref>:<password>@aws-0-<regio
 1. Railway 프로젝트를 생성합니다.
 2. 백엔드용 서비스를 하나 만듭니다.
 3. 백엔드 서비스의 Source를 이 GitHub 저장소로 연결합니다.
-4. 백엔드 서비스 Settings에서 Root Directory를 `/backend`로 설정합니다.
-5. Healthcheck Path를 `/health`로 설정합니다.
+4. 별도 Root Directory 설정이 보이지 않으면 그대로 둡니다.
+5. 이 리포의 `railway.toml`이 Builder=`DOCKERFILE`, Dockerfile path=`backend/Dockerfile`, Healthcheck=`/health`를 적용합니다.
+6. 필요하면 대시보드 값보다 `railway.toml` 값이 우선합니다.
 
 ## 필수 환경변수
 
@@ -74,6 +74,7 @@ DATABASE_CONNECT_TIMEOUT=10
 - Supabase를 Vercel Storage에서 만들었더라도, Railway에는 연결 문자열을 수동으로 넣어야 합니다.
 - Railway에서는 Supabase `Session pooler` URL 사용을 권장합니다.
 - `sslmode=require`를 유지하는 편이 안전합니다.
+- 이 리포의 [`railway.toml`](C:/Users/back0/skinmatch​/skinmatch/railway.toml)은 Railway 공식 Config as Code 형식입니다.
 - `CORS_ORIGINS`는 쉼표 구분 문자열 또는 JSON 배열 문자열을 지원합니다.
 - `AUTO_CREATE_TABLES=true`면 첫 시작 시 테이블 생성을 시도하지만, DB 연결 실패가 나더라도 컨테이너는 즉시 종료되지 않습니다.
 
