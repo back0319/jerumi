@@ -1,6 +1,6 @@
-# SkinMatch Backend on Railway
+# SkinMatch Backend on Railway + Supabase
 
-이 문서는 `backend` FastAPI 서비스만 Railway에 Dockerfile 기반으로 배포하는 절차를 정리합니다.
+이 문서는 `backend` FastAPI 서비스는 Railway에 Dockerfile 기반으로 배포하고, 데이터베이스는 Vercel Storage에서 만든 Supabase Postgres를 사용하는 절차를 정리합니다.
 
 ## 배포 대상
 
@@ -8,17 +8,50 @@
 - Service type: Railway `Empty Service` 또는 `Connect Repo`
 - Root Directory: `/backend`
 - Build method: `backend/Dockerfile`
+- Database: Supabase Postgres (created via Vercel Storage)
 
 `backend` 디렉토리에 `Dockerfile`이 있으므로, Railway 서비스의 Root Directory를 `/backend`로 지정하면 Dockerfile이 자동으로 사용됩니다.
+
+## 배포 구조
+
+- Frontend: Vercel
+- Backend API: Railway
+- Database: Supabase Postgres
+
+Vercel Marketplace Storage는 Vercel 프로젝트에는 환경변수를 자동 주입하지만, Railway 서비스에는 자동 연결되지 않습니다. 따라서 Supabase 연결 문자열을 Railway의 `DATABASE_URL`에 직접 넣어야 합니다.
+
+## Supabase 연결 문자열 준비
+
+Railway는 공식 문서 기준으로 현재 outbound IPv6를 지원하지 않으므로, Supabase의 Direct connection 대신 IPv4가 되는 `Supavisor session mode` 연결 문자열을 사용하는 것이 안전합니다.
+
+사용 권장:
+
+- `Session pooler` / `Supavisor session mode`
+- 포트 `5432`
+- `sslmode=require` 포함
+
+피해야 할 것:
+
+- `Direct connection`
+  Supabase direct host는 IPv6 기반이라 Railway에서 실패할 수 있습니다.
+- `Transaction pooler`
+  Supabase 공식 문서상 prepared statements를 지원하지 않아 애플리케이션 런타임과 충돌할 수 있습니다.
+
+예시:
+
+```env
+DATABASE_URL=postgresql+asyncpg://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+`postgres://` 또는 `postgresql://` 형식이어도 앱이 내부에서 `postgresql+asyncpg://`로 자동 보정합니다.
 
 ## Railway 준비
 
 1. Railway 프로젝트를 생성합니다.
-2. 같은 프로젝트에 `Postgres` 서비스를 추가합니다.
-3. 백엔드용 서비스를 하나 만듭니다.
-4. 백엔드 서비스의 Source를 이 GitHub 저장소로 연결합니다.
-5. 백엔드 서비스 Settings에서 Root Directory를 `/backend`로 설정합니다.
-6. Healthcheck Path를 `/health`로 설정합니다.
+2. 백엔드용 서비스를 하나 만듭니다.
+3. 백엔드 서비스의 Source를 이 GitHub 저장소로 연결합니다.
+4. 백엔드 서비스 Settings에서 Root Directory를 `/backend`로 설정합니다.
+5. Healthcheck Path를 `/health`로 설정합니다.
 
 ## 필수 환경변수
 
@@ -26,7 +59,7 @@
 
 ```env
 PORT=8000
-DATABASE_URL=${{Postgres.DATABASE_URL}}
+DATABASE_URL=postgresql+asyncpg://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 JWT_SECRET=replace-with-a-long-random-secret
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=replace-with-a-strong-password
@@ -38,7 +71,9 @@ DATABASE_CONNECT_TIMEOUT=10
 
 메모:
 
-- Railway Postgres가 제공하는 `DATABASE_URL`이 `postgres://` 또는 `postgresql://` 형식이어도 앱에서 `postgresql+asyncpg://` 형식으로 자동 보정합니다.
+- Supabase를 Vercel Storage에서 만들었더라도, Railway에는 연결 문자열을 수동으로 넣어야 합니다.
+- Railway에서는 Supabase `Session pooler` URL 사용을 권장합니다.
+- `sslmode=require`를 유지하는 편이 안전합니다.
 - `CORS_ORIGINS`는 쉼표 구분 문자열 또는 JSON 배열 문자열을 지원합니다.
 - `AUTO_CREATE_TABLES=true`면 첫 시작 시 테이블 생성을 시도하지만, DB 연결 실패가 나더라도 컨테이너는 즉시 종료되지 않습니다.
 
@@ -78,3 +113,4 @@ python -m app.utils.seed
 - `uploads/`는 컨테이너 내부의 임시 저장소입니다. 재배포나 재시작 시 사라질 수 있습니다.
 - 데모/검증 용도에는 충분하지만, 장기 저장이 필요하면 추후 S3, Supabase Storage 같은 외부 스토리지로 분리해야 합니다.
 - 현재는 Alembic 마이그레이션이 정리되어 있지 않아 `create_all()` 기반 초기화에 의존합니다. 운영 환경 고도화 시 마이그레이션 체계로 전환하는 것이 좋습니다.
+- Supabase 쪽에서 connection string 종류를 여러 개 보여주면, Railway 백엔드에는 `Session pooler`를 우선 선택하는 것이 안전합니다.
