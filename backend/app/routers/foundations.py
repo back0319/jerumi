@@ -3,7 +3,6 @@
 import json
 import re
 import time
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import delete, select, update
@@ -93,7 +92,8 @@ async def create_foundation_from_photo(
     # Save the image
     safe_name = re.sub(r"[^\w\-.]", "_", f"{brand}_{shade_name}")
     filename = f"{safe_name}_{int(time.time())}.jpg"
-    save_path = Path(settings.UPLOAD_DIR) / "swatches" / filename
+    save_path = settings.upload_path / "swatches" / filename
+    save_path.parent.mkdir(parents=True, exist_ok=True)
     save_path.write_bytes(contents)
     swatch_url = f"/static/swatches/{filename}"
 
