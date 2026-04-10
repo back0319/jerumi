@@ -1,13 +1,9 @@
 import json
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
-
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-
 
 def normalize_database_url(url: str) -> str:
     normalized = url.strip()
@@ -40,7 +36,9 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 480
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin1234"
-    UPLOAD_DIR: str = "uploads"
+    SUPABASE_URL: str | None = None
+    SUPABASE_SERVICE_ROLE_KEY: str | None = None
+    SUPABASE_STORAGE_BUCKET: str | None = None
     CORS_ORIGINS: str = (
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"
@@ -57,13 +55,6 @@ class Settings(BaseSettings):
         if not isinstance(value, str):
             return value
         return normalize_database_url(value)
-
-    @property
-    def upload_path(self) -> Path:
-        path = Path(self.UPLOAD_DIR)
-        if path.is_absolute():
-            return path
-        return BACKEND_DIR / path
 
     @property
     def cors_origins(self) -> list[str]:

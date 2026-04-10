@@ -1,14 +1,12 @@
 """Foundation shade CRUD endpoints."""
 
 import json
-import re
-import time
+import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import delete, select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database import get_db
 from app.models.foundation import Foundation
 from app.routers.auth import get_current_admin
@@ -19,9 +17,16 @@ from app.schemas.foundation import (
     FoundationOut,
     FoundationUpdate,
 )
+from app.services.storage import (
+    StorageConfigError,
+    StorageOperationError,
+    delete_public_asset,
+    upload_swatch_image,
+)
 from app.services.swatch_extraction import extract_swatch_from_image
 
-router = APIRouter(prefix="/api/foundations", tags=["foundations"])
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/foundations", tags=["foundations"])
 
 
 @router.post("/analyze-swatch", response_model=FoundationAnalysisResult)
@@ -89,15 +94,19 @@ async def create_foundation_from_photo(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Save the image
-    safe_name = re.sub(r"[^\w\-.]", "_", f"{brand}_{shade_name}")
-    filename = f"{safe_name}_{int(time.time())}.jpg"
-    save_path = settings.upload_path / "swatches" / filename
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    save_path.write_bytes(contents)
-    swatch_url = f"/static/swatches/{filename}"
+    try:
+        upload_result = upload_swatch_image(
+            image_bytes=contents,
+            brand=brand,
+            shade_name=shade_name,
+            content_type=image.content_type,
+            original_filename=image.filename,
+        )
+    except StorageConfigError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except StorageOperationError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
-    # Create foundation record
     f = Foundation(
         brand=brand,
         product_name=product_name,
@@ -108,10 +117,20 @@ async def create_foundation_from_photo(
         b_value=result["b_value"],
         hex_color=result["hex_color"],
         undertone=result["undertone"],
-        swatch_image_url=swatch_url,
+        swatch_image_url=upload_result.public_url,
     )
     db.add(f)
-    await db.commit()
+
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        try:
+            delete_public_asset(upload_result.public_url)
+        except Exception as cleanup_exc:
+            logger.warning("Failed to clean up uploaded swatch image: %s", cleanup_exc)
+        raise
+
     await db.refresh(f)
     return f
 
@@ -189,6 +208,15 @@ async def delete_foundation(
     f = result.scalar_one_or_none()
     if not f:
         raise HTTPException(status_code=404, detail="Foundation not found")
+
+    if f.swatch_image_url:
+        try:
+            delete_public_asset(f.swatch_image_url)
+        except StorageConfigError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        except StorageOperationError as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
     await db.delete(f)
     await db.commit()
     return {"ok": True}

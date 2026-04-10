@@ -21,7 +21,7 @@ from app.services.color_analysis import (
     trimmed_mean_lab,
 )
 
-router = APIRouter(prefix="/api", tags=["analysis"])
+router = APIRouter(tags=["analysis"])
 
 
 @router.post("/analyze", response_model=AnalysisResponse)

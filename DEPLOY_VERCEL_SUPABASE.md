@@ -1,84 +1,89 @@
-# Vercel + Supabase Deployment Checklist
+# Vercel Services + Supabase Deployment Checklist
 
 ## 1) Target Architecture
 
-- Frontend (`frontend`): Vercel
-- Backend (`backend`, FastAPI): deploy to any Python host (Render/Railway/Fly.io 등)
+- Frontend: Vercel `web` service from `frontend`
+- Python API: Vercel `api` service from `backend/main.py`
 - Database: Supabase Postgres
+- File storage: Supabase Storage public bucket
 
-> 이 프로젝트는 현재 `frontend`가 `NEXT_PUBLIC_API_URL`로 백엔드에 직접 요청합니다.
+이 저장소는 루트 [`vercel.json`](C:/Users/back0/skinmatch​/skinmatch/vercel.json) 기준으로 `experimentalServices`를 사용합니다. Vercel 프로젝트의 `Framework Preset`은 반드시 `Services`로 설정해야 합니다.
 
-## 1-1) Vercel Frontend Project 설정
+## 2) Required Vercel Project Settings
 
-이 저장소는 모노레포 구조이므로, Vercel에서 프론트를 배포할 때 `Root Directory`를 반드시 `/frontend`로 설정해야 합니다.
+- Root Directory: repository root `/`
+- Framework Preset: `Services`
+- No separate frontend-only project root
 
-- Root Directory: `/frontend`
-- Framework Preset: `Next.js`
-- Build Command: `next build` 기본값 사용 가능
+`web` 서비스는 `frontend`를 `/`에, `api` 서비스는 `backend/main.py`를 `/api`에 노출합니다. 외부 공개 경로는 기존과 동일하게 `/api/analyze`, `/api/auth/login`, `/api/foundations...` 입니다.
 
-`No Next.js version detected` 에러가 나오면 거의 항상 Vercel 프로젝트가 저장소 루트에서 빌드하고 있다는 뜻입니다. 이 경우 `frontend/package.json`을 못 찾고 있는 상태입니다.
+## 3) Supabase Setup
 
-## 2) Supabase: Database URL 준비
+### Database
 
-Supabase 프로젝트 생성 후 `Connection string`(Postgres)을 복사해서 백엔드 `DATABASE_URL`로 사용합니다.
+`DATABASE_URL`에는 Supabase Postgres 연결 문자열을 넣습니다.
 
-중요:
+권장:
 
-- Railway 백엔드라면 `Direct connection`보다 `Supavisor session mode` 연결 문자열을 우선 사용합니다.
-- 이유: Railway 공식 문서 기준 outbound IPv6가 지원되지 않아 Supabase direct host 연결이 실패할 수 있습니다.
-- `Transaction mode`는 Supabase 공식 문서상 prepared statements를 지원하지 않으므로, 이 백엔드에는 권장하지 않습니다.
+- `Session pooler` / `Supavisor session mode`
+- `sslmode=require` 포함
 
-예시 형식:
+예시:
 
-```bash
-DATABASE_URL=postgresql+asyncpg://<user>:<password>@<session-pooler-host>:5432/<db>?sslmode=require
+```env
+DATABASE_URL=postgresql+asyncpg://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
-## 3) Backend 환경변수 (필수)
+### Storage
 
-아래 값을 백엔드 배포 서비스에 설정:
+1. Supabase Storage에서 public bucket 하나를 생성합니다.
+2. bucket 이름을 `SUPABASE_STORAGE_BUCKET`에 넣습니다.
+3. Python API는 `SUPABASE_SERVICE_ROLE_KEY`로 업로드/삭제를 수행합니다.
 
-```bash
+이 앱은 `/api/foundations/from-photo` 호출 시 원본 이미지를 Supabase Storage에 저장하고, `swatch_image_url`에 public URL을 기록합니다.
+
+## 4) Required Environment Variables
+
+Vercel 프로젝트에 아래 값을 설정합니다.
+
+```env
 DATABASE_URL=postgresql+asyncpg://...
-JWT_SECRET=<랜덤 긴 문자열>
+DATABASE_CONNECT_TIMEOUT=10
+AUTO_CREATE_TABLES=true
+JWT_SECRET=replace-with-a-long-random-secret
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=<강한 비밀번호>
-UPLOAD_DIR=uploads
-CORS_ORIGINS=https://<your-vercel-project>.vercel.app
-CORS_ORIGIN_REGEX=^https://<your-vercel-project>(-[a-z0-9-]+)?\.vercel\.app$
+ADMIN_PASSWORD=replace-with-a-strong-password
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+SUPABASE_STORAGE_BUCKET=foundation-swatches
+CORS_ORIGINS=https://<your-domain>,http://localhost:3000
+CORS_ORIGIN_REGEX=
 ```
 
 메모:
-- `CORS_ORIGINS`는 쉼표 구분 문자열도 지원합니다.
-- `CORS_ORIGIN_REGEX`를 쓰면 Vercel preview 도메인까지 허용할 수 있습니다.
-- Vercel Storage가 Vercel 프로젝트에는 환경변수를 자동 주입해도, Railway에는 자동 전달되지 않으므로 `DATABASE_URL`은 Railway에 직접 설정해야 합니다.
 
-## 4) Vercel 환경변수 (필수)
+- `NEXT_PUBLIC_API_URL`는 Vercel Services 배포에서는 비워두는 편이 맞습니다.
+- 프론트만 따로 `npm run dev` 할 때만 `NEXT_PUBLIC_API_URL=http://localhost:8000` 같은 override를 사용합니다.
+- `AUTO_CREATE_TABLES=true`면 API가 시작될 때 현재 모델 기준으로 테이블 생성을 시도합니다.
 
-Vercel 프로젝트(Frontend)에 아래 변수 설정:
+## 5) Local Development
 
-```bash
-NEXT_PUBLIC_API_URL=https://<your-backend-domain>
-```
-
-`Production` + `Preview` 둘 다 설정 권장.
-
-## 5) 배포 후 확인
-
-1. 백엔드 헬스체크:
+### Full stack with Vercel routing
 
 ```bash
-curl https://<your-backend-domain>/api/health
+npx vercel@latest dev -L
 ```
 
-2. 프론트 배포 URL 접속 후 `/scan`에서 이미지 업로드 테스트
-3. 브라우저 콘솔에 CORS 에러 없는지 확인
-4. `/admin` 로그인/분석 API 호출 확인
+### Existing docker-compose
 
-## 6) 이 리포에서 이미 반영된 항목
+`docker-compose.yml`은 그대로 사용할 수 있습니다. 이 경우 frontend는 `NEXT_PUBLIC_API_URL=http://localhost:8000`를 사용하고, backend는 prefixless route(`/auth/login`, `/foundations`, `/analyze`)를 직접 노출합니다.
 
-- 백엔드 CORS를 환경변수 기반으로 변경:
-  - `CORS_ORIGINS`
-  - `CORS_ORIGIN_REGEX`
-- `.env.example`에 CORS 변수 추가
-- `docker-compose.yml`에 로컬 CORS 변수 추가
+## 6) Verification
+
+배포 후 아래를 확인합니다.
+
+1. `GET /api/health`
+2. `/scan`에서 분석 요청이 `/api/analyze`로 성공하는지
+3. `/admin` 로그인과 foundation CRUD가 정상 동작하는지
+4. `from-photo` 등록 시 `swatch_image_url`이 Supabase Storage public URL인지
+5. 삭제 시 Storage object도 함께 정리되는지
