@@ -1,4 +1,7 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// API routes are now Next.js Route Handlers on the same origin.
+// NEXT_PUBLIC_API_URL is kept as an optional override for local dev
+// against an external backend, but defaults to "" (same-origin).
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const API_TIMEOUT_MS = 30000;
 
 async function fetchWithTimeout(
