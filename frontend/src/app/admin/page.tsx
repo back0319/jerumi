@@ -123,7 +123,7 @@ export default function AdminPage() {
     setListError("");
 
     try {
-      const foundationList = await apiGet<Foundation[]>("/api/foundations");
+      const foundationList = await apiGet<Foundation[]>("/foundations");
       startTransition(() => {
         setAllFoundations(sortFoundations(foundationList));
       });
@@ -143,7 +143,7 @@ export default function AdminPage() {
 
     try {
       const data = await apiFormPost<{ access_token: string }>(
-        "/api/auth/login",
+        "/auth/login",
         new URLSearchParams({ username, password }),
       );
       setToken(data.access_token);
@@ -221,7 +221,7 @@ export default function AdminPage() {
     try {
       if (editingFoundationId === null) {
         const created = await apiAuthPost<Foundation>(
-          "/api/foundations",
+          "/foundations",
           payload,
           token,
         );
@@ -234,7 +234,7 @@ export default function AdminPage() {
         });
       } else {
         const updated = await apiAuthPut<Foundation>(
-          `/api/foundations/${editingFoundationId}`,
+          `/foundations/${editingFoundationId}`,
           payload,
           token,
         );
@@ -269,7 +269,7 @@ export default function AdminPage() {
     setListError("");
 
     try {
-      await apiAuthDelete(`/api/foundations/${id}`, token);
+      await apiAuthDelete(`/foundations/${id}`, token);
       const nextFoundations = allFoundations.filter(
         (foundation) => foundation.id !== id,
       );
@@ -383,7 +383,7 @@ export default function AdminPage() {
       }
 
       const result = await apiAuthPostFormData<FoundationAnalysisResult>(
-        "/api/foundations/analyze-swatch",
+        "/foundations/analyze-swatch",
         formData,
         token,
       );
@@ -419,7 +419,7 @@ export default function AdminPage() {
       }
 
       const created = await apiAuthPostFormData<Foundation>(
-        "/api/foundations/from-photo",
+        "/foundations/from-photo",
         formData,
         token,
       );

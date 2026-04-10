@@ -1,5 +1,10 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 const API_TIMEOUT_MS = 30000;
+
+function buildApiUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE_URL.replace(/\/$/, "")}${normalizedPath}`;
+}
 
 async function fetchWithTimeout(
   input: RequestInfo | URL,
@@ -21,7 +26,7 @@ async function fetchWithTimeout(
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(buildApiUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -38,7 +43,7 @@ export async function apiFormPost<T>(
   body: URLSearchParams,
   headers?: HeadersInit
 ): Promise<T> {
-  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(buildApiUrl(path), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -54,7 +59,7 @@ export async function apiFormPost<T>(
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetchWithTimeout(`${API_URL}${path}`);
+  const res = await fetchWithTimeout(buildApiUrl(path));
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
@@ -64,7 +69,7 @@ export async function apiAuthPost<T>(
   body: unknown,
   token: string
 ): Promise<T> {
-  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(buildApiUrl(path), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -81,7 +86,7 @@ export async function apiAuthPostFormData<T>(
   formData: FormData,
   token: string
 ): Promise<T> {
-  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(buildApiUrl(path), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -96,7 +101,7 @@ export async function apiAuthPostFormData<T>(
 }
 
 export async function apiAuthDelete(path: string, token: string) {
-  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(buildApiUrl(path), {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -109,7 +114,7 @@ export async function apiAuthPut<T>(
   body: unknown,
   token: string
 ): Promise<T> {
-  const res = await fetchWithTimeout(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(buildApiUrl(path), {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",

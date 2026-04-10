@@ -485,7 +485,7 @@ export default function ScanPage() {
         pixels = pixels.filter((_, i) => i % step === 0);
       }
 
-      const response = await apiPost<AnalysisResponse>("/api/analyze", {
+      const response = await apiPost<AnalysisResponse>("/analyze", {
         skin_pixels_rgb: pixels,
         checker_patches: patches,
         top_n: 10,

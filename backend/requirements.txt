@@ -11,3 +11,4 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
 pillow==10.4.0
 pydantic-settings==2.5.0
+supabase>=2.15,<3.0
