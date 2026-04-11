@@ -10,17 +10,30 @@ import {
 import {
   apiGet,
   apiFormPost,
+  apiPost,
   apiAuthPost,
   apiAuthPut,
   apiAuthDelete,
   apiAuthPostFormData,
 } from "@/lib/api";
 import {
+  buildRegionPolygons,
+  extractSkinPixelsByRegion,
+  flattenSkinRegionPixels,
+  SKIN_REGIONS,
+  type FaceRegionPolygon,
+  type SkinRegionPixels,
+} from "@/lib/facemesh";
+import {
   COLORCHECKER_REFERENCE,
   type MeasuredPatch,
   buildCheckerPatches,
 } from "@/lib/colorChecker";
-import type { Foundation, FoundationAnalysisResult } from "@/types";
+import type {
+  AnalysisResponse,
+  Foundation,
+  FoundationAnalysisResult,
+} from "@/types";
 
 function createDefaultManualForm() {
   return {
@@ -62,7 +75,140 @@ function buildBrandList(items: readonly Foundation[]) {
   );
 }
 
+type RoiOverlayMode = "facemesh" | "fallback";
+type RoiRegionKey = keyof SkinRegionPixels;
+
+type RoiExtraction = {
+  combinedPixels: number[][];
+  skinRegions: SkinRegionPixels | null;
+};
+
+type RoiOverlay = {
+  mode: RoiOverlayMode;
+  pixelCount: number;
+  polygons: FaceRegionPolygon[];
+  regionPixelCounts: Partial<Record<RoiRegionKey, number>>;
+  fallbackRect?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
+
+const ROI_FALLBACK_FILL = "rgba(59, 130, 246, 0.18)";
+const ROI_FALLBACK_STROKE = "#2563eb";
+const ROI_REGION_STYLES: Record<RoiRegionKey, { fill: string; stroke: string }> =
+  {
+    lower_left_cheek: {
+      fill: "rgba(244, 63, 94, 0.18)",
+      stroke: "#e11d48",
+    },
+    lower_right_cheek: {
+      fill: "rgba(249, 115, 22, 0.18)",
+      stroke: "#ea580c",
+    },
+    below_lips: {
+      fill: "rgba(16, 185, 129, 0.18)",
+      stroke: "#059669",
+    },
+    chin: {
+      fill: "rgba(59, 130, 246, 0.18)",
+      stroke: "#2563eb",
+    },
+  };
+
+const ROI_REGION_LABELS: Record<RoiRegionKey, string> = {
+  lower_left_cheek: "왼쪽 하부 볼",
+  lower_right_cheek: "오른쪽 하부 볼",
+  below_lips: "입 아래",
+  chin: "턱",
+};
+
+function averagePixelsToHex(pixels: number[][]): string {
+  if (pixels.length === 0) return "#000000";
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  for (const pixel of pixels) {
+    r += pixel[0];
+    g += pixel[1];
+    b += pixel[2];
+  }
+
+  const count = pixels.length;
+  return `#${Math.round(r / count)
+    .toString(16)
+    .padStart(2, "0")}${Math.round(g / count)
+    .toString(16)
+    .padStart(2, "0")}${Math.round(b / count)
+    .toString(16)
+    .padStart(2, "0")}`;
+}
+
+function downsamplePixels(pixels: number[][], maxCount: number): number[][] {
+  if (pixels.length <= maxCount) return pixels;
+
+  const step = Math.ceil(pixels.length / maxCount);
+  return pixels.filter((_, index) => index % step === 0);
+}
+
+function downsampleSkinRegions(
+  skinRegions: SkinRegionPixels,
+  maxPerRegion: number,
+): SkinRegionPixels {
+  return {
+    lower_left_cheek: downsamplePixels(
+      skinRegions.lower_left_cheek,
+      maxPerRegion,
+    ),
+    lower_right_cheek: downsamplePixels(
+      skinRegions.lower_right_cheek,
+      maxPerRegion,
+    ),
+    below_lips: downsamplePixels(skinRegions.below_lips, maxPerRegion),
+    chin: downsamplePixels(skinRegions.chin, maxPerRegion),
+  };
+}
+
+function getRoiRegionPixelCounts(
+  skinRegions: SkinRegionPixels | null,
+): Partial<Record<RoiRegionKey, number>> {
+  if (!skinRegions) return {};
+
+  return {
+    lower_left_cheek: skinRegions.lower_left_cheek.length,
+    lower_right_cheek: skinRegions.lower_right_cheek.length,
+    below_lips: skinRegions.below_lips.length,
+    chin: skinRegions.chin.length,
+  };
+}
+
+function formatAnalysisMethod(method: string): string {
+  switch (method) {
+    case "region-medoid":
+      return "다중 ROI 대표색";
+    case "flat-fallback":
+      return "fallback 평면 픽셀";
+    case "flat-pixels":
+      return "단일 평면 픽셀";
+    default:
+      return method;
+  }
+}
+
+function getConfidenceBadgeClass(level: string): string {
+  if (level === "높음") return "bg-emerald-100 text-emerald-700";
+  if (level === "보통") return "bg-yellow-100 text-yellow-700";
+  return "bg-red-100 text-red-700";
+}
+
 export default function AdminPage() {
+  const ROI_FACE_MESH_TIMEOUT_MS = 8000;
+  const ROI_MAX_ANALYSIS_PIXELS = 10000;
+  const ROI_MAX_REGION_ANALYSIS_PIXELS = 2500;
   const [token, setToken] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -92,12 +238,30 @@ export default function AdminPage() {
     useState<FoundationAnalysisResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [showRoiTool, setShowRoiTool] = useState(false);
+  const [roiFileName, setRoiFileName] = useState<string | null>(null);
+  const [roiPreview, setRoiPreview] = useState<string | null>(null);
+  const [roiExtraction, setRoiExtraction] = useState<RoiExtraction | null>(
+    null,
+  );
+  const [roiOverlay, setRoiOverlay] = useState<RoiOverlay | null>(null);
+  const [roiResult, setRoiResult] = useState<AnalysisResponse | null>(null);
+  const [roiError, setRoiError] = useState<string | null>(null);
+  const [roiImageStatus, setRoiImageStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [roiAnalyzing, setRoiAnalyzing] = useState(false);
 
   // ColorChecker for photo analysis
   const [checkerPatches, setCheckerPatches] = useState<MeasuredPatch[]>([]);
   const [selectingPatch, setSelectingPatch] = useState<number | null>(null);
   const photoCanvasRef = useRef<HTMLCanvasElement>(null);
   const photoImgRef = useRef<HTMLImageElement>(null);
+  const roiProcessingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const roiPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const roiImgRef = useRef<HTMLImageElement>(null);
+  const roiDetectionTimeoutRef = useRef<number | null>(null);
+  const roiDetectionCompletedRef = useRef(false);
   const brands = buildBrandList(allFoundations);
   const foundations = filterBrand
     ? allFoundations.filter((foundation) => foundation.brand === filterBrand)
@@ -116,6 +280,101 @@ export default function AdminPage() {
     setSelectingPatch(null);
     setPhotoMeta(createDefaultPhotoMeta());
     setPhotoError(null);
+  }, []);
+
+  const resetRoiState = useCallback(() => {
+    setRoiPreview((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return null;
+    });
+    setRoiFileName(null);
+    setRoiExtraction(null);
+    setRoiOverlay(null);
+    setRoiResult(null);
+    setRoiError(null);
+    setRoiImageStatus("idle");
+    setRoiAnalyzing(false);
+  }, []);
+
+  const drawImageToCanvas = useCallback(
+    (img: HTMLImageElement, canvas: HTMLCanvasElement) => {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return false;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      return true;
+    },
+    [],
+  );
+
+  const redrawRoiPreviewCanvas = useCallback((overlay: RoiOverlay | null) => {
+    const sourceCanvas = roiProcessingCanvasRef.current;
+    const previewCanvas = roiPreviewCanvasRef.current;
+    if (!sourceCanvas || !previewCanvas) return;
+
+    previewCanvas.width = sourceCanvas.width;
+    previewCanvas.height = sourceCanvas.height;
+
+    const ctx = previewCanvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    if (!overlay) return;
+
+    ctx.save();
+    ctx.lineWidth = Math.max(2, previewCanvas.width / 320);
+
+    for (const polygon of overlay.polygons) {
+      if (polygon.points.length === 0) continue;
+
+      const regionStyle =
+        overlay.mode === "facemesh" &&
+        polygon.name in ROI_REGION_STYLES
+          ? ROI_REGION_STYLES[polygon.name as RoiRegionKey]
+          : null;
+      ctx.fillStyle = regionStyle?.fill ?? ROI_FALLBACK_FILL;
+      ctx.strokeStyle = regionStyle?.stroke ?? ROI_FALLBACK_STROKE;
+
+      ctx.beginPath();
+      ctx.moveTo(polygon.points[0].x, polygon.points[0].y);
+      for (const point of polygon.points.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    if (overlay.fallbackRect) {
+      ctx.fillStyle = ROI_FALLBACK_FILL;
+      ctx.strokeStyle = ROI_FALLBACK_STROKE;
+      ctx.fillRect(
+        overlay.fallbackRect.x,
+        overlay.fallbackRect.y,
+        overlay.fallbackRect.width,
+        overlay.fallbackRect.height,
+      );
+      ctx.strokeRect(
+        overlay.fallbackRect.x,
+        overlay.fallbackRect.y,
+        overlay.fallbackRect.width,
+        overlay.fallbackRect.height,
+      );
+    }
+
+    ctx.restore();
+  }, []);
+
+  const clearRoiDetectionTimeout = useCallback(() => {
+    if (roiDetectionTimeoutRef.current === null) return;
+    window.clearTimeout(roiDetectionTimeoutRef.current);
+    roiDetectionTimeoutRef.current = null;
   }, []);
 
   const loadFoundations = useCallback(async () => {
@@ -176,6 +435,15 @@ export default function AdminPage() {
       }
     };
   }, [photoPreview]);
+
+  useEffect(() => {
+    return () => {
+      clearRoiDetectionTimeout();
+      if (roiPreview) {
+        URL.revokeObjectURL(roiPreview);
+      }
+    };
+  }, [clearRoiDetectionTimeout, roiPreview]);
 
   const openCreateForm = useCallback(() => {
     setEditingFoundationId(null);
@@ -317,6 +585,252 @@ export default function AdminPage() {
     if (!ctx) return;
     ctx.drawImage(img, 0, 0);
   };
+
+  const completeRoiExtraction = useCallback(
+    (
+      extracted: RoiExtraction,
+      overlay: RoiOverlay,
+      nextError: string | null = null,
+    ) => {
+      roiDetectionCompletedRef.current = true;
+      clearRoiDetectionTimeout();
+      setRoiExtraction(extracted);
+      setRoiOverlay(overlay);
+      redrawRoiPreviewCanvas(overlay);
+      setRoiError(nextError);
+      setRoiImageStatus("ready");
+    },
+    [clearRoiDetectionTimeout, redrawRoiPreviewCanvas],
+  );
+
+  const fallbackRoiExtract = useCallback(
+    (
+      canvas: HTMLCanvasElement,
+      nextError = "얼굴 자동 인식이 지연되어 하부 중심 fallback 영역으로 표시합니다.",
+    ) => {
+      if (roiDetectionCompletedRef.current) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setRoiError("이미지를 처리하지 못했습니다. 다시 시도해주세요.");
+        setRoiImageStatus("error");
+        return;
+      }
+
+      const rectX = Math.round(canvas.width * 0.35);
+      const rectY = Math.round(canvas.height * 0.46);
+      const rectWidth = Math.round(canvas.width * 0.3);
+      const rectHeight = Math.round(canvas.height * 0.24);
+      const imageData = ctx.getImageData(rectX, rectY, rectWidth, rectHeight);
+      const pixels: number[][] = [];
+
+      for (let index = 0; index < imageData.data.length; index += 4) {
+        pixels.push([
+          imageData.data[index],
+          imageData.data[index + 1],
+          imageData.data[index + 2],
+        ]);
+      }
+
+      if (pixels.length < 100) {
+        roiDetectionCompletedRef.current = true;
+        clearRoiDetectionTimeout();
+        setRoiError("피부 후보 영역을 추출하지 못했습니다.");
+        setRoiImageStatus("error");
+        return;
+      }
+
+      completeRoiExtraction(
+        {
+          combinedPixels: pixels,
+          skinRegions: null,
+        },
+        {
+          mode: "fallback",
+          pixelCount: pixels.length,
+          polygons: [
+            {
+              name: "fallback",
+              points: [
+                { x: rectX, y: rectY },
+                { x: rectX + rectWidth, y: rectY },
+                { x: rectX + rectWidth, y: rectY + rectHeight },
+                { x: rectX, y: rectY + rectHeight },
+              ],
+              bounds: {
+                minX: rectX,
+                minY: rectY,
+                maxX: rectX + rectWidth,
+                maxY: rectY + rectHeight,
+              },
+            },
+          ],
+          regionPixelCounts: {},
+          fallbackRect: {
+            x: rectX,
+            y: rectY,
+            width: rectWidth,
+            height: rectHeight,
+          },
+        },
+        nextError,
+      );
+    },
+    [clearRoiDetectionTimeout, completeRoiExtraction],
+  );
+
+  const loadFaceMeshAndExtractForAdmin = useCallback(
+    async (canvas: HTMLCanvasElement) => {
+      try {
+        roiDetectionCompletedRef.current = false;
+        clearRoiDetectionTimeout();
+        roiDetectionTimeoutRef.current = window.setTimeout(() => {
+          fallbackRoiExtract(canvas);
+        }, ROI_FACE_MESH_TIMEOUT_MS);
+
+        // @ts-ignore - MediaPipe loaded from CDN
+        const { FaceMesh } = await import("@mediapipe/face_mesh");
+        const faceMesh = new FaceMesh({
+          locateFile: (file: string) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+
+        faceMesh.onResults((results: any) => {
+          if (roiDetectionCompletedRef.current) return;
+
+          if (
+            !results.multiFaceLandmarks ||
+            results.multiFaceLandmarks.length === 0
+          ) {
+            fallbackRoiExtract(
+              canvas,
+              "얼굴을 감지하지 못해 하부 중심 fallback 영역으로 표시합니다.",
+            );
+            return;
+          }
+
+          const landmarks = results.multiFaceLandmarks[0];
+          const skinRegions = extractSkinPixelsByRegion(
+            canvas,
+            landmarks,
+            SKIN_REGIONS,
+          );
+          const pixels = flattenSkinRegionPixels(skinRegions);
+          const polygons = buildRegionPolygons(canvas, landmarks, SKIN_REGIONS);
+
+          if (pixels.length < 100) {
+            fallbackRoiExtract(
+              canvas,
+              "대표 피부색 후보 픽셀이 적어 fallback 영역으로 표시합니다.",
+            );
+            return;
+          }
+
+          completeRoiExtraction(
+            {
+              combinedPixels: pixels,
+              skinRegions,
+            },
+            {
+              mode: "facemesh",
+              pixelCount: pixels.length,
+              polygons,
+              regionPixelCounts: getRoiRegionPixelCounts(skinRegions),
+            },
+          );
+        });
+
+        await faceMesh.send({ image: canvas });
+      } catch (error) {
+        console.warn("Admin ROI Face Mesh fallback:", error);
+        fallbackRoiExtract(canvas);
+      }
+    },
+    [
+      ROI_FACE_MESH_TIMEOUT_MS,
+      clearRoiDetectionTimeout,
+      completeRoiExtraction,
+      fallbackRoiExtract,
+    ],
+  );
+
+  const handleRoiUpload = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) {
+        setRoiError("파일 크기는 10MB 이하여야 합니다.");
+        return;
+      }
+
+      setRoiPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(file);
+      });
+      setRoiFileName(file.name);
+      setRoiExtraction(null);
+      setRoiOverlay(null);
+      setRoiResult(null);
+      setRoiError(null);
+      setRoiImageStatus("loading");
+    },
+    [],
+  );
+
+  const handleRoiImageLoad = useCallback(() => {
+    const image = roiImgRef.current;
+    const canvas = roiProcessingCanvasRef.current;
+    if (!image || !canvas) return;
+
+    const drawn = drawImageToCanvas(image, canvas);
+    if (!drawn) {
+      setRoiError("ROI 검증용 캔버스를 초기화하지 못했습니다.");
+      setRoiImageStatus("error");
+      return;
+    }
+
+    redrawRoiPreviewCanvas(null);
+    void loadFaceMeshAndExtractForAdmin(canvas);
+  }, [drawImageToCanvas, loadFaceMeshAndExtractForAdmin, redrawRoiPreviewCanvas]);
+
+  const handleAnalyzeRoi = useCallback(async () => {
+    if (!roiExtraction) return;
+
+    setRoiAnalyzing(true);
+    setRoiError(null);
+
+    try {
+      const sampledSkinRegions = roiExtraction.skinRegions
+        ? downsampleSkinRegions(
+            roiExtraction.skinRegions,
+            ROI_MAX_REGION_ANALYSIS_PIXELS,
+          )
+        : null;
+      const pixels = sampledSkinRegions
+        ? downsamplePixels(
+            flattenSkinRegionPixels(sampledSkinRegions),
+            ROI_MAX_ANALYSIS_PIXELS,
+          )
+        : downsamplePixels(roiExtraction.combinedPixels, ROI_MAX_ANALYSIS_PIXELS);
+
+      const response = await apiPost<AnalysisResponse>("/analyze", {
+        skin_pixels_rgb: pixels,
+        skin_regions_rgb: sampledSkinRegions,
+        top_n: 5,
+      });
+      setRoiResult(response);
+    } catch (error: any) {
+      setRoiError(error.message || "ROI 분석 중 오류가 발생했습니다.");
+    } finally {
+      setRoiAnalyzing(false);
+    }
+  }, [roiExtraction]);
 
   const handlePhotoCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -507,7 +1021,18 @@ export default function AdminPage() {
           </button>
           <button
             onClick={() => {
+              setShowRoiTool((current) => !current);
+              setShowPhotoForm(false);
+              closeManualForm();
+            }}
+            className="rounded border border-gray-200 bg-white px-4 py-1.5 text-sm hover:bg-gray-50"
+          >
+            ROI 검증
+          </button>
+          <button
+            onClick={() => {
               setShowPhotoForm(!showPhotoForm);
+              setShowRoiTool(false);
               closeManualForm();
             }}
             className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700"
@@ -521,6 +1046,7 @@ export default function AdminPage() {
               } else {
                 openCreateForm();
               }
+              setShowRoiTool(false);
             }}
             className="rounded bg-rose-600 px-4 py-1.5 text-sm text-white hover:bg-rose-700"
           >
@@ -532,6 +1058,199 @@ export default function AdminPage() {
       {listError && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {listError}
+        </div>
+      )}
+
+      {showRoiTool && (
+        <div className="mb-6 rounded-xl bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">ROI 검증</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                관리자 전용으로 얼굴 ROI 오버레이, 픽셀 수, fallback 여부,
+                confidence를 확인합니다.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowRoiTool(false);
+                resetRoiState();
+              }}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              닫기
+            </button>
+          </div>
+
+          {roiError && (
+            <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {roiError}
+            </div>
+          )}
+
+          {!roiPreview && (
+            <label className="mb-4 block cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-6 text-center transition hover:border-rose-400 sm:p-8">
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={handleRoiUpload}
+              />
+              <span className="text-gray-500 text-sm">
+                얼굴 사진 선택 (JPEG/PNG, 최대 10MB)
+              </span>
+            </label>
+          )}
+
+          {roiPreview && (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="space-y-3">
+                <div className="relative inline-block max-w-full">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    ref={roiImgRef}
+                    src={roiPreview}
+                    alt="ROI 검증용 얼굴"
+                    className="block max-w-full rounded-xl border"
+                    onLoad={handleRoiImageLoad}
+                  />
+                  <canvas
+                    ref={roiPreviewCanvasRef}
+                    className="pointer-events-none absolute inset-0 h-full w-full rounded-xl"
+                  />
+                </div>
+                <canvas ref={roiProcessingCanvasRef} className="hidden" />
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <span>{roiFileName}</span>
+                  <button
+                    onClick={resetRoiState}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    다른 사진 선택
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                  <div className="rounded-lg bg-white px-3 py-2">
+                    <p className="font-semibold text-gray-800">
+                      {roiOverlay?.mode === "facemesh" ? "FaceMesh" : roiOverlay ? "Fallback" : "-"}
+                    </p>
+                    <p className="text-gray-500">감지 방식</p>
+                  </div>
+                  <div className="rounded-lg bg-white px-3 py-2">
+                    <p className="font-semibold text-gray-800">
+                      {roiOverlay ? roiOverlay.pixelCount.toLocaleString() : 0}
+                    </p>
+                    <p className="text-gray-500">추출 px</p>
+                  </div>
+                </div>
+
+                {roiOverlay && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(Object.keys(ROI_REGION_LABELS) as RoiRegionKey[]).map(
+                      (regionName) => (
+                        <div
+                          key={regionName}
+                          className="rounded-lg bg-white px-3 py-2"
+                        >
+                          <p className="text-[11px] font-semibold text-gray-700">
+                            {ROI_REGION_LABELS[regionName]}
+                          </p>
+                          <p className="mt-1 text-sm text-gray-600">
+                            {(roiOverlay.regionPixelCounts[regionName] ?? 0).toLocaleString()} px
+                          </p>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => void handleAnalyzeRoi()}
+                  disabled={!roiExtraction || roiImageStatus !== "ready" || roiAnalyzing}
+                  className="w-full rounded bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:opacity-50"
+                >
+                  {roiAnalyzing ? "분석 중..." : "ROI 분석"}
+                </button>
+
+                {roiResult && (
+                  <div className="space-y-3 rounded-lg bg-white px-3 py-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="h-12 w-12 rounded-lg border"
+                        style={{ backgroundColor: roiResult.skin_hex }}
+                      />
+                      <div>
+                        <p className="font-mono text-sm text-gray-700">
+                          {roiResult.skin_hex}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          L*={roiResult.skin_lab[0]} a*={roiResult.skin_lab[1]} b*={roiResult.skin_lab[2]}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                      <div className="rounded-lg bg-gray-50 px-3 py-2">
+                        <p className="font-semibold text-gray-800">
+                          {formatAnalysisMethod(roiResult.analysis_meta.method)}
+                        </p>
+                        <p className="text-gray-500">분석 방식</p>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getConfidenceBadgeClass(
+                            roiResult.analysis_meta.confidence.level,
+                          )}`}
+                        >
+                          {roiResult.analysis_meta.confidence.level}
+                        </span>
+                        <p className="mt-1 font-mono text-gray-800">
+                          {roiResult.analysis_meta.confidence.score}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="rounded-lg bg-gray-50 px-3 py-2">
+                        <p className="font-semibold text-gray-800">
+                          {roiResult.analysis_meta.valid_region_count}
+                        </p>
+                        <p className="text-gray-500">유효 ROI</p>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 px-3 py-2">
+                        <p className="font-semibold text-gray-800">
+                          {roiResult.analysis_meta.fallback_used ? "YES" : "NO"}
+                        </p>
+                        <p className="text-gray-500">Fallback</p>
+                      </div>
+                      <div className="rounded-lg bg-gray-50 px-3 py-2">
+                        <p className="font-semibold text-gray-800">
+                          {roiResult.analysis_meta.max_region_delta_e ?? "-"}
+                        </p>
+                        <p className="text-gray-500">최대 ΔE</p>
+                      </div>
+                    </div>
+
+                    {roiResult.analysis_meta.confidence.notes.length > 0 && (
+                      <div className="flex flex-wrap gap-2 text-[11px] text-gray-600">
+                        {roiResult.analysis_meta.confidence.notes.map((note) => (
+                          <span
+                            key={note}
+                            className="rounded-full bg-gray-100 px-3 py-1.5"
+                          >
+                            {note}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -45,41 +45,27 @@ type AnalysisOverlay = {
 
 const FALLBACK_FILL = "rgba(59, 130, 246, 0.18)";
 const FALLBACK_STROKE = "#2563eb";
-const REGION_LABELS: Record<RegionKey, string> = {
-  lower_left_cheek: "왼쪽 하부 볼",
-  lower_right_cheek: "오른쪽 하부 볼",
-  below_lips: "입 아래",
-  chin: "턱",
-};
 const REGION_OVERLAY_STYLES: Record<
   RegionKey,
-  { fill: string; stroke: string; badge: string }
+  { fill: string; stroke: string }
 > = {
   lower_left_cheek: {
     fill: "rgba(244, 63, 94, 0.18)",
     stroke: "#e11d48",
-    badge: "rgba(225, 29, 72, 0.92)",
   },
   lower_right_cheek: {
     fill: "rgba(249, 115, 22, 0.18)",
     stroke: "#ea580c",
-    badge: "rgba(234, 88, 12, 0.92)",
   },
   below_lips: {
     fill: "rgba(16, 185, 129, 0.18)",
     stroke: "#059669",
-    badge: "rgba(5, 150, 105, 0.92)",
   },
   chin: {
     fill: "rgba(59, 130, 246, 0.18)",
     stroke: "#2563eb",
-    badge: "rgba(37, 99, 235, 0.92)",
   },
 };
-
-function isRegionKey(value: string): value is RegionKey {
-  return value in REGION_LABELS;
-}
 
 function averagePixelsToHex(pixels: number[][]): string {
   if (pixels.length === 0) return "#000000";
@@ -142,25 +128,6 @@ function getSkinRegionPixelCounts(
   };
 }
 
-function formatAnalysisMethod(method: string): string {
-  switch (method) {
-    case "region-medoid":
-      return "다중 ROI 대표색";
-    case "flat-fallback":
-      return "fallback 평면 픽셀";
-    case "flat-pixels":
-      return "단일 평면 픽셀";
-    default:
-      return method;
-  }
-}
-
-function getConfidenceBadgeClass(level: string): string {
-  if (level === "높음") return "bg-emerald-100 text-emerald-700";
-  if (level === "보통") return "bg-yellow-100 text-yellow-700";
-  return "bg-red-100 text-red-700";
-}
-
 function getDeltaEBadgeClass(deltaE: number): string {
   if (deltaE <= 1.0) return "bg-green-100 text-green-700";
   if (deltaE <= 2.0) return "bg-emerald-100 text-emerald-700";
@@ -176,10 +143,8 @@ export default function ScanPage() {
   const MAX_REGION_ANALYSIS_PIXELS = 2500;
   const [step, setStep] = useState<Step>("upload");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageLabel, setImageLabel] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [evaluationNote, setEvaluationNote] = useState("");
   const [showAllRecommendations, setShowAllRecommendations] = useState(false);
   const [skinExtraction, setSkinExtraction] = useState<ExtractedSkinData | null>(
     null,
@@ -254,15 +219,12 @@ export default function ScanPage() {
       if (polygon.points.length === 0) continue;
 
       const regionStyle =
-        overlay.mode === "facemesh" && isRegionKey(polygon.name)
-          ? REGION_OVERLAY_STYLES[polygon.name]
+        overlay.mode === "facemesh" &&
+        polygon.name in REGION_OVERLAY_STYLES
+          ? REGION_OVERLAY_STYLES[polygon.name as RegionKey]
           : null;
       const strokeColor = regionStyle?.stroke ?? FALLBACK_STROKE;
       const fillColor = regionStyle?.fill ?? FALLBACK_FILL;
-      const labelColor = regionStyle?.badge ?? "rgba(37, 99, 235, 0.92)";
-      const labelText = isRegionKey(polygon.name)
-        ? REGION_LABELS[polygon.name]
-        : "Fallback";
 
       ctx.beginPath();
       ctx.moveTo(polygon.points[0].x, polygon.points[0].y);
@@ -274,24 +236,6 @@ export default function ScanPage() {
       ctx.strokeStyle = strokeColor;
       ctx.fill();
       ctx.stroke();
-
-      const labelX = (polygon.bounds.minX + polygon.bounds.maxX) / 2;
-      const labelY = polygon.bounds.minY + 18;
-      const fontSize = Math.max(11, previewCanvas.width / 48);
-      ctx.font = `600 ${fontSize}px sans-serif`;
-      const metrics = ctx.measureText(labelText);
-      const badgeWidth = metrics.width + 14;
-      const badgeHeight = fontSize + 8;
-      const badgeX = Math.max(
-        4,
-        Math.min(previewCanvas.width - badgeWidth - 4, labelX - badgeWidth / 2),
-      );
-      const badgeY = Math.max(4, labelY);
-
-      ctx.fillStyle = labelColor;
-      ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(labelText, badgeX + 7, badgeY + fontSize);
     }
 
     if (overlay.fallbackRect) {
@@ -348,10 +292,8 @@ export default function ScanPage() {
       revokeUploadedObjectUrl();
       setError(null);
       setResult(null);
-      setEvaluationNote("");
       setSkinExtraction(null);
       setAnalysisOverlay(null);
-      setImageLabel(file.name);
       const url = URL.createObjectURL(file);
       uploadedObjectUrlRef.current = url;
       setImageUrl(url);
@@ -380,10 +322,8 @@ export default function ScanPage() {
       revokeUploadedObjectUrl();
       setError(null);
       setResult(null);
-      setEvaluationNote("");
       setSkinExtraction(null);
       setAnalysisOverlay(null);
-      setImageLabel(`camera-capture-${new Date().toISOString()}`);
       setImageUrl(dataUrl);
       setStep("upload");
     },
@@ -661,51 +601,10 @@ export default function ScanPage() {
     }
   };
 
-  const handleExportEvaluation = useCallback(() => {
-    if (!result) return;
-
-    const payload = {
-      exported_at: new Date().toISOString(),
-      image_label: imageLabel,
-      evaluation_note: evaluationNote.trim() || null,
-      overlay_mode: analysisOverlay?.mode ?? null,
-      extraction_region_pixel_counts: analysisOverlay?.regionPixelCounts ?? {},
-      analysis_meta: result.analysis_meta,
-      representative_skin: {
-        lab: result.skin_lab,
-        hex: result.skin_hex,
-      },
-      top_recommendations: result.recommendations
-        .slice(0, 5)
-        .map((item, index) => ({
-          rank: index + 1,
-          id: item.id,
-          brand: item.brand,
-          product_name: item.product_name,
-          shade_name: item.shade_name,
-          shade_code: item.shade_code,
-          delta_e: item.delta_e,
-          hex_color: item.hex_color,
-        })),
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    anchor.href = url;
-    anchor.download = `roi-eval-${timestamp}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }, [analysisOverlay, evaluationNote, imageLabel, result]);
-
   const handleSelectDifferentPhoto = useCallback(() => {
     revokeUploadedObjectUrl();
     setStep("upload");
     setImageUrl(null);
-    setImageLabel(null);
     setSkinExtraction(null);
     setAnalysisOverlay(null);
     setCheckerPatches([]);
@@ -713,7 +612,6 @@ export default function ScanPage() {
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
     setResult(null);
-    setEvaluationNote("");
     setError(null);
     setShowAllRecommendations(false);
   }, [revokeUploadedObjectUrl]);
@@ -722,13 +620,11 @@ export default function ScanPage() {
     revokeUploadedObjectUrl();
     setStep("upload");
     setImageUrl(null);
-    setImageLabel(null);
     setSkinExtraction(null);
     setAnalysisOverlay(null);
     setCheckerPatches([]);
     setSelectingPatch(null);
     setResult(null);
-    setEvaluationNote("");
     setError(null);
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
@@ -743,7 +639,6 @@ export default function ScanPage() {
     setSkinExtraction(null);
     setAnalysisOverlay(null);
     setResult(null);
-    setEvaluationNote("");
   }, [imageUrl]);
 
   useEffect(() => {
@@ -822,7 +717,7 @@ export default function ScanPage() {
           </div>
           <div className="mt-4 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">
             정면, 무표정, 균일한 조명에서 촬영하고 HDR·뷰티 필터·강한 그림자는
-            가능한 한 피하는 편이 ROI 안정성과 추천 품질에 유리합니다.
+            가능한 한 피하는 편이 분석 안정성과 추천 품질에 유리합니다.
           </div>
         </div>
       )}
@@ -849,7 +744,7 @@ export default function ScanPage() {
             <div className="mt-4">
               <div className="animate-spin w-8 h-8 border-4 border-rose-200 border-t-rose-600 rounded-full mx-auto mb-2" />
               <p className="text-sm text-gray-500">
-                하부 볼, 입 아래, 턱 기준 대표 피부색 후보 영역을 찾는 중입니다...
+                피부 영역을 찾는 중입니다...
               </p>
             </div>
           </div>
@@ -875,9 +770,9 @@ export default function ScanPage() {
                 컬러체커 보정 (선택사항)
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                하부 볼, 입 아래, 턱 기준 추출 영역을 확인한 뒤, 패치를 3개
-                이상 선택하면 색 보정이 적용됩니다. 먼저 swatch를 고른 뒤 사진
-                속 같은 칸을 클릭하세요.
+                추출된 피부 영역을 확인한 뒤, 패치를 3개 이상 선택하면 색
+                보정이 적용됩니다. 먼저 swatch를 고른 뒤 사진 속 같은 칸을
+                클릭하세요.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center text-xs sm:w-fit">
@@ -964,8 +859,8 @@ export default function ScanPage() {
                       </p>
                       <p className="mt-1 text-xs text-gray-500">
                         {analysisOverlay.mode === "facemesh"
-                          ? "하부 볼·입 아래·턱 기준 대표 피부색 후보 영역"
-                          : "하부 중심 fallback 영역"}
+                          ? "피부 영역 자동 감지"
+                          : "중심 fallback 영역"}
                       </p>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
@@ -985,48 +880,6 @@ export default function ScanPage() {
                   </>
                 )}
               </div>
-              {analysisOverlay && (
-                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">
-                        ROI 검증 정보
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        오버레이에 표시된 영역과 픽셀 수를 바로 확인할 수 있습니다.
-                      </p>
-                    </div>
-                    <div className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-gray-600">
-                      총 {analysisOverlay.pixelCount.toLocaleString()} px
-                    </div>
-                  </div>
-                  {analysisOverlay.mode === "facemesh" ? (
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                      {(
-                        Object.keys(REGION_LABELS) as RegionKey[]
-                      ).map((regionName) => (
-                        <div
-                          key={regionName}
-                          className="rounded-lg bg-white px-3 py-2"
-                        >
-                          <p className="text-[11px] font-semibold text-gray-700">
-                            {REGION_LABELS[regionName]}
-                          </p>
-                          <p className="mt-1 text-sm text-gray-600">
-                            {(analysisOverlay.regionPixelCounts[regionName] ?? 0).toLocaleString()}{" "}
-                            px
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-gray-600">
-                      얼굴 ROI 검출이 충분하지 않아 하부 중심 fallback 박스를
-                      사용했습니다.
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Checker patch selection */}
@@ -1161,27 +1014,19 @@ export default function ScanPage() {
                   대표 피부색과 추천 결과를 한 번에 비교할 수 있게 정리했습니다.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={handleExportEvaluation}
-                  className="text-left text-sm font-medium text-gray-600 hover:text-gray-800"
-                >
-                  평가 JSON 내보내기
-                </button>
-                <button
-                  onClick={resetAll}
-                  className="text-left text-sm font-medium text-rose-600 hover:text-rose-700 sm:text-right"
-                >
-                  다시 분석하기
-                </button>
-              </div>
+              <button
+                onClick={resetAll}
+                className="text-left text-sm font-medium text-rose-600 hover:text-rose-700 sm:text-right"
+              >
+                다시 분석하기
+              </button>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
               <div
                 className="h-20 w-20 rounded-xl border shadow-inner sm:h-24 sm:w-24"
                 style={{ backgroundColor: result.skin_hex }}
               />
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <div className="rounded-lg bg-gray-50 px-3 py-2">
                   <p className="text-[11px] font-semibold text-gray-700">
                     CIELAB
@@ -1199,124 +1044,13 @@ export default function ScanPage() {
                 </div>
                 <div className="rounded-lg bg-gray-50 px-3 py-2">
                   <p className="text-[11px] font-semibold text-gray-700">
-                    신뢰도
-                  </p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getConfidenceBadgeClass(
-                        result.analysis_meta.confidence.level,
-                      )}`}
-                    >
-                      {result.analysis_meta.confidence.level}
-                    </span>
-                    <span className="font-mono text-sm text-gray-600">
-                      {result.analysis_meta.confidence.score}
-                    </span>
-                  </div>
-                </div>
-                <div className="rounded-lg bg-gray-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-gray-700">
-                    분석 방식
+                    추천 개수
                   </p>
                   <p className="mt-1 text-sm text-gray-600">
-                    {formatAnalysisMethod(result.analysis_meta.method)}
+                    {result.recommendations.length}개
                   </p>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-800">
-                  ROI 검증 및 평가 기록
-                </h3>
-                <p className="mt-1 text-xs text-gray-500">
-                  fallback 여부, ROI별 픽셀 수, 최종 대표색, 추천 결과를 평가용
-                  JSON으로 바로 내보낼 수 있습니다.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-center text-xs sm:w-fit lg:grid-cols-4">
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="font-semibold text-gray-800">
-                    {result.analysis_meta.valid_region_count}
-                  </p>
-                  <p className="text-gray-500">유효 ROI</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="font-semibold text-gray-800">
-                    {result.analysis_meta.total_pixel_count.toLocaleString()}
-                  </p>
-                  <p className="text-gray-500">분석 px</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="font-semibold text-gray-800">
-                    {result.analysis_meta.fallback_used ? "YES" : "NO"}
-                  </p>
-                  <p className="text-gray-500">Fallback</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="font-semibold text-gray-800">
-                    {result.analysis_meta.max_region_delta_e ?? "-"}
-                  </p>
-                  <p className="text-gray-500">최대 ΔE</p>
-                </div>
-              </div>
-            </div>
-
-            {Object.keys(result.analysis_meta.region_pixel_counts).length > 0 && (
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {(Object.keys(REGION_LABELS) as RegionKey[]).map((regionName) => (
-                  <div key={regionName} className="rounded-lg bg-white px-3 py-2">
-                    <p className="text-[11px] font-semibold text-gray-700">
-                      {REGION_LABELS[regionName]}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {(result.analysis_meta.region_pixel_counts[regionName] ?? 0).toLocaleString()}{" "}
-                      px
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {result.analysis_meta.confidence.notes.length > 0 && (
-              <div className="mt-3 rounded-lg bg-white px-3 py-3">
-                <p className="text-[11px] font-semibold text-gray-700">
-                  신뢰도 메모
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
-                  {result.analysis_meta.confidence.notes.map((note) => (
-                    <span
-                      key={note}
-                      className="rounded-full bg-gray-100 px-3 py-1.5"
-                    >
-                      {note}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-3 rounded-lg bg-white px-3 py-3">
-              <label
-                htmlFor="evaluation-note"
-                className="text-[11px] font-semibold text-gray-700"
-              >
-                평가 메모
-              </label>
-              <textarea
-                id="evaluation-note"
-                value={evaluationNote}
-                onChange={(event) => setEvaluationNote(event.target.value)}
-                placeholder="예: 홍조가 있는 사진, top-3 중 2개가 실제 착색과 유사"
-                className="mt-2 min-h-24 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
-              />
-              <p className="mt-2 text-[11px] text-gray-500">
-                다운로드한 JSON은 `evaluation/records` 구조에 맞춰 저장해서
-                비교용 평가셋으로 쓸 수 있습니다.
-              </p>
             </div>
           </div>
 
