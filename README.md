@@ -1,8 +1,21 @@
 # 제루미
 
+현재 기준 버전: `v1.1.0`
+
 컬러체커가 보이는 얼굴 사진 한 장으로 대표 피부색을 추출하고, CIEDE2000 색차 기준으로 가까운 파운데이션을 추천하는 프로젝트입니다.
 
 현재 배포 구조는 `Vercel Services + Supabase` 기준입니다.
+
+## 최근 릴리스
+
+### `v1.1.0`
+
+- 대표 피부색 추출을 `lower_left_cheek / lower_right_cheek / below_lips / chin` 기반으로 개편
+- ROI별 representative color 계산 후 `CIEDE2000 medoid` 선택
+- 분석 응답에 `analysis_meta`, confidence, ROI pixel count 추가
+- `/scan`에 ROI 검증 패널과 평가 JSON export 추가
+- `evaluation/` 기반 로컬 검증 워크플로우 추가
+- `evaluation/samples`, `evaluation/records`는 `.gitignore`로 제외해서 샘플 이미지와 검증 산출물이 레포에 올라가지 않도록 구성
 
 ## 주요 기능
 
@@ -11,6 +24,8 @@
   - MediaPipe Face Mesh 기반 피부 ROI 추출
   - 컬러체커 패치 선택을 통한 색 보정
   - 대표 피부색 계산 후 파운데이션 추천
+  - ROI별 픽셀 수, fallback 여부, confidence 확인
+  - 평가 JSON export
 - `/admin`
   - 관리자 로그인
   - 파운데이션 수동 등록 / 수정 / 삭제
@@ -40,6 +55,20 @@
 5. DB에 저장된 파운데이션 색과 `ΔE` 비교 후 상위 추천 반환
 
 Face Mesh가 실패하면 lower-center fallback 영역으로 분석을 계속합니다.
+
+## ROI 검증과 평가
+
+대표 피부색 추출 튜닝을 위해 `evaluation/` 디렉터리를 사용합니다.
+
+- `evaluation/samples`
+  - 로컬 검증용 얼굴 샘플 이미지
+- `evaluation/records`
+  - ROI 오버레이 이미지, 평가 JSON, 배치 검증 결과
+
+주의:
+
+- 이 샘플 이미지와 검증 산출물은 `.gitignore`로 제외됩니다.
+- 즉, 로컬 검증에는 사용하지만 Git 저장소에는 포함하지 않습니다.
 
 ## 기술 스택
 
@@ -75,8 +104,10 @@ Face Mesh가 실패하면 lower-center fallback 영역으로 분석을 계속합
 │  ├─ app/main.py           # API 엔트리포인트
 │  ├─ app/routers/          # auth / analysis / foundations
 │  ├─ app/services/         # 색 분석 / 스와치 추출 / Storage
+│  ├─ tests/                # 대표색 추출 회귀 테스트
 │  ├─ app/utils/seed.py     # 샘플 이미지 기반 DB 시드
 │  └─ shade_images/         # 시드용 파운데이션 샘플 이미지
+├─ evaluation/              # 로컬 ROI 검증용 샘플/기록
 ├─ vercel.json              # Vercel Services 설정
 ├─ docker-compose.yml       # 로컬 개발용 전체 스택
 └─ DEPLOY_VERCEL_SUPABASE.md
@@ -204,6 +235,7 @@ Production 기준 공개 경로는 `/api/*` 입니다.
 
 - `POST /api/analyze`
   - 얼굴 피부 ROI 픽셀 기반 분석
+  - 응답에 `analysis_meta` 포함
 - `GET /api/health`
   - 헬스체크
 
@@ -254,11 +286,12 @@ Production 기준 공개 경로는 `/api/*` 입니다.
 변경 후 최소 확인 항목:
 
 1. `npm run build`
-2. `GET /api/health`
-3. `/scan`에서 분석 성공
-4. `/admin` 로그인 및 foundation CRUD
-5. `/api/foundations/from-photo` 업로드 후 `swatch_image_url` 생성 확인
-6. foundation 삭제 시 Storage object 정리 확인
+2. `python -m unittest discover -s backend/tests -p "test_*.py"`
+3. `GET /api/health`
+4. `/scan`에서 분석 성공
+5. `/admin` 로그인 및 foundation CRUD
+6. `/api/foundations/from-photo` 업로드 후 `swatch_image_url` 생성 확인
+7. foundation 삭제 시 Storage object 정리 확인
 
 ## 주의 사항
 

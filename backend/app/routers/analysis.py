@@ -12,14 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.foundation import Foundation
-from app.schemas.analysis import AnalysisRequest, AnalysisResponse, RecommendationItem
+from app.schemas.analysis import (
+    AnalysisConfidence,
+    AnalysisMeta,
+    AnalysisRequest,
+    AnalysisResponse,
+    RecommendationItem,
+)
 from app.services.color_analysis import (
+    analyze_representative_skin_color,
     build_correction_matrix,
     compute_recommendations,
     lab_to_hex,
-    representative_skin_lab_from_regions,
-    rgb_pixels_to_lab,
-    trimmed_mean_lab,
 )
 
 router = APIRouter(tags=["analysis"])
@@ -46,22 +50,16 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
             "chin": req.skin_regions_rgb.chin,
         }
 
-    skin_lab = None
-    if region_payload is not None:
-        skin_lab = representative_skin_lab_from_regions(region_payload, correction)
+    try:
+        analysis = analyze_representative_skin_color(
+            skin_pixels_rgb=req.skin_pixels_rgb,
+            skin_regions_rgb=region_payload,
+            correction_matrix=correction,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    if skin_lab is None:
-        if not req.skin_pixels_rgb:
-            raise HTTPException(
-                status_code=422,
-                detail="skin_pixels_rgb or skin_regions_rgb is required",
-            )
-
-        # Convert flat skin pixels to LAB with correction.
-        lab_pixels = rgb_pixels_to_lab(req.skin_pixels_rgb, correction)
-        skin_lab = trimmed_mean_lab(lab_pixels)
-
-    skin_hex = lab_to_hex(skin_lab)
+    skin_hex = lab_to_hex(analysis.skin_lab)
 
     # Query foundations, optionally filtered by brand
     query = select(Foundation)
@@ -88,7 +86,7 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     ]
 
     # Compute CIEDE2000 and get top N
-    ranked = compute_recommendations(skin_lab, foundation_dicts, req.top_n)
+    ranked = compute_recommendations(analysis.skin_lab, foundation_dicts, req.top_n)
 
     recommendations = [
         RecommendationItem(
@@ -109,9 +107,26 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     ]
 
     return AnalysisResponse(
-        skin_lab=[round(float(v), 2) for v in skin_lab],
+        skin_lab=[round(float(v), 2) for v in analysis.skin_lab],
         skin_hex=skin_hex,
         recommendations=recommendations,
+        analysis_meta=AnalysisMeta(
+            method=analysis.method,
+            fallback_used=analysis.fallback_used,
+            total_pixel_count=analysis.total_pixel_count,
+            valid_region_count=analysis.valid_region_count,
+            region_pixel_counts=analysis.region_pixel_counts,
+            max_region_delta_e=(
+                None
+                if analysis.max_region_delta_e is None
+                else round(float(analysis.max_region_delta_e), 2)
+            ),
+            confidence=AnalysisConfidence(
+                score=analysis.confidence.score,
+                level=analysis.confidence.level,
+                notes=analysis.confidence.notes,
+            ),
+        ),
     )
 
 

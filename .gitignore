@@ -10,3 +10,7 @@ build/
 venv/
 backend/uploads/
 .vercel
+evaluation/samples/*
+!evaluation/samples/.gitkeep
+evaluation/records/*
+!evaluation/records/.gitkeep

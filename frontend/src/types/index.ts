@@ -27,10 +27,27 @@ export interface RecommendationItem {
   undertone: string | null;
 }
 
+export interface AnalysisConfidence {
+  score: number;
+  level: string;
+  notes: string[];
+}
+
+export interface AnalysisMeta {
+  method: string;
+  fallback_used: boolean;
+  total_pixel_count: number;
+  valid_region_count: number;
+  region_pixel_counts: Record<string, number>;
+  max_region_delta_e: number | null;
+  confidence: AnalysisConfidence;
+}
+
 export interface AnalysisResponse {
   skin_lab: [number, number, number];
   skin_hex: string;
   recommendations: RecommendationItem[];
+  analysis_meta: AnalysisMeta;
 }
 
 export interface ColorCheckerPatch {

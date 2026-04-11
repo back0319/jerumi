@@ -10,6 +10,8 @@ Pipeline:
 5. Sort and return top-N matches.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 from colour import (
     Lab_to_XYZ,
@@ -20,6 +22,34 @@ from colour import (
 )
 
 from app.schemas.analysis import ColorCheckerPatch
+
+
+@dataclass
+class RegionRepresentativeSummary:
+    final_lab: np.ndarray | None
+    region_pixel_counts: dict[str, int]
+    valid_region_names: list[str]
+    region_representatives: dict[str, np.ndarray]
+    max_region_delta_e: float | None
+
+
+@dataclass
+class ConfidenceSummary:
+    score: float
+    level: str
+    notes: list[str]
+
+
+@dataclass
+class RepresentativeSkinAnalysis:
+    skin_lab: np.ndarray
+    method: str
+    fallback_used: bool
+    total_pixel_count: int
+    valid_region_count: int
+    region_pixel_counts: dict[str, int]
+    max_region_delta_e: float | None
+    confidence: ConfidenceSummary
 
 
 def categorize_delta_e(delta_e_value: float) -> tuple[str, str, str]:
@@ -235,6 +265,74 @@ def select_medoid_lab(region_labs: list[np.ndarray]) -> np.ndarray:
     return stacked[int(np.argmin(total_distances))]
 
 
+def _max_pairwise_delta_e(region_labs: list[np.ndarray]) -> float | None:
+    """Return the largest pairwise CIEDE2000 distance across region representatives."""
+    if len(region_labs) < 2:
+        return None
+
+    max_distance = 0.0
+    for left_index in range(len(region_labs)):
+        for right_index in range(left_index + 1, len(region_labs)):
+            distance = float(
+                np.squeeze(
+                    delta_E(
+                        region_labs[left_index].reshape(1, 1, 3),
+                        region_labs[right_index].reshape(1, 1, 3),
+                        method="CIE 2000",
+                    )
+                )
+            )
+            max_distance = max(max_distance, distance)
+
+    return max_distance
+
+
+def summarize_skin_regions(
+    region_pixels_rgb: dict[str, list[list[float]]],
+    correction_matrix: np.ndarray | None = None,
+    minimum_pixels: int = 50,
+) -> RegionRepresentativeSummary:
+    """Summarize grouped facial ROI pixels and choose a final representative LAB."""
+    region_pixel_counts: dict[str, int] = {}
+    valid_region_names: list[str] = []
+    region_representatives: dict[str, np.ndarray] = {}
+
+    for region_name, pixels in region_pixels_rgb.items():
+        region_pixel_counts[region_name] = len(pixels)
+        if len(pixels) < minimum_pixels:
+            continue
+
+        lab = rgb_pixels_to_lab(pixels, correction_matrix)
+        region_representatives[region_name] = representative_region_lab(lab)
+        valid_region_names.append(region_name)
+
+    valid_region_labs = [
+        region_representatives[region_name] for region_name in valid_region_names
+    ]
+
+    if not valid_region_labs:
+        return RegionRepresentativeSummary(
+            final_lab=None,
+            region_pixel_counts=region_pixel_counts,
+            valid_region_names=valid_region_names,
+            region_representatives=region_representatives,
+            max_region_delta_e=None,
+        )
+
+    if len(valid_region_labs) == 1:
+        final_lab = valid_region_labs[0]
+    else:
+        final_lab = select_medoid_lab(valid_region_labs)
+
+    return RegionRepresentativeSummary(
+        final_lab=final_lab,
+        region_pixel_counts=region_pixel_counts,
+        valid_region_names=valid_region_names,
+        region_representatives=region_representatives,
+        max_region_delta_e=_max_pairwise_delta_e(valid_region_labs),
+    )
+
+
 def representative_skin_lab_from_regions(
     region_pixels_rgb: dict[str, list[list[float]]],
     correction_matrix: np.ndarray | None = None,
@@ -245,22 +343,150 @@ def representative_skin_lab_from_regions(
     Each region is summarized independently, then the final representative color
     is chosen as the CIEDE2000 medoid across valid region representatives.
     """
-    region_representatives: list[np.ndarray] = []
+    return summarize_skin_regions(
+        region_pixels_rgb,
+        correction_matrix,
+        minimum_pixels,
+    ).final_lab
 
-    for pixels in region_pixels_rgb.values():
-        if len(pixels) < minimum_pixels:
-            continue
 
-        lab = rgb_pixels_to_lab(pixels, correction_matrix)
-        region_representatives.append(representative_region_lab(lab))
+def build_confidence_summary(
+    *,
+    method: str,
+    total_pixel_count: int,
+    region_summary: RegionRepresentativeSummary | None = None,
+    minimum_region_pixels: int = 50,
+) -> ConfidenceSummary:
+    """Estimate analysis confidence from ROI coverage, method, and region consistency."""
+    score = 0.92 if method == "region-medoid" else 0.7
+    notes: list[str] = []
 
-    if not region_representatives:
-        return None
+    if total_pixel_count < 300:
+        score -= 0.18
+        notes.append("분석에 사용된 피부 픽셀이 적습니다.")
+    elif total_pixel_count < 800:
+        score -= 0.08
+        notes.append("피부 픽셀 수가 충분하지 않아 결과 변동 가능성이 있습니다.")
 
-    if len(region_representatives) == 1:
-        return region_representatives[0]
+    if method == "flat-pixels":
+        score -= 0.08
+        notes.append("다중 ROI 대신 단일 평면 픽셀 경로를 사용했습니다.")
+    elif method == "flat-fallback":
+        score -= 0.14
+        notes.append("ROI 샘플이 부족해 fallback 평면 경로로 분석했습니다.")
 
-    return select_medoid_lab(region_representatives)
+    if region_summary is not None:
+        valid_region_count = len(region_summary.valid_region_names)
+        missing_regions = [
+            region_name
+            for region_name, pixel_count in region_summary.region_pixel_counts.items()
+            if pixel_count < minimum_region_pixels
+        ]
+
+        if valid_region_count == 3:
+            score -= 0.06
+            notes.append("일부 ROI가 최소 픽셀 수를 충족하지 못했습니다.")
+        elif valid_region_count == 2:
+            score -= 0.14
+            notes.append("유효한 ROI가 2개뿐이라 대표색 안정성이 낮아질 수 있습니다.")
+        elif valid_region_count == 1:
+            score -= 0.26
+            notes.append("유효한 ROI가 1개뿐이라 결과가 국소 색에 치우칠 수 있습니다.")
+
+        if missing_regions:
+            notes.append(
+                "제외된 ROI: " + ", ".join(missing_regions)
+            )
+
+        spread = region_summary.max_region_delta_e
+        if spread is not None:
+            if spread >= 8.0:
+                score -= 0.22
+                notes.append("ROI 간 색 차가 커서 조명 또는 피부 편차 영향이 큽니다.")
+            elif spread >= 5.0:
+                score -= 0.12
+                notes.append("ROI 간 색 차가 다소 커서 결과 일관성이 떨어질 수 있습니다.")
+            elif spread >= 3.5:
+                score -= 0.05
+                notes.append("ROI 간 색 차가 약간 관찰됩니다.")
+
+    score = float(np.clip(score, 0.25, 0.99))
+
+    if score >= 0.85:
+        level = "높음"
+    elif score >= 0.65:
+        level = "보통"
+    else:
+        level = "낮음"
+
+    return ConfidenceSummary(
+        score=round(score, 2),
+        level=level,
+        notes=notes,
+    )
+
+
+def analyze_representative_skin_color(
+    *,
+    skin_pixels_rgb: list[list[float]] | None,
+    skin_regions_rgb: dict[str, list[list[float]]] | None,
+    correction_matrix: np.ndarray | None = None,
+    minimum_region_pixels: int = 50,
+) -> RepresentativeSkinAnalysis:
+    """Resolve the representative skin color and metadata for either analysis path."""
+    region_summary: RegionRepresentativeSummary | None = None
+
+    if skin_regions_rgb is not None:
+        region_summary = summarize_skin_regions(
+            skin_regions_rgb,
+            correction_matrix,
+            minimum_region_pixels,
+        )
+        if region_summary.final_lab is not None:
+            confidence = build_confidence_summary(
+                method="region-medoid",
+                total_pixel_count=sum(region_summary.region_pixel_counts.values()),
+                region_summary=region_summary,
+                minimum_region_pixels=minimum_region_pixels,
+            )
+            return RepresentativeSkinAnalysis(
+                skin_lab=region_summary.final_lab,
+                method="region-medoid",
+                fallback_used=False,
+                total_pixel_count=sum(region_summary.region_pixel_counts.values()),
+                valid_region_count=len(region_summary.valid_region_names),
+                region_pixel_counts=region_summary.region_pixel_counts,
+                max_region_delta_e=region_summary.max_region_delta_e,
+                confidence=confidence,
+            )
+
+    if not skin_pixels_rgb:
+        raise ValueError("skin_pixels_rgb or skin_regions_rgb is required")
+
+    lab_pixels = rgb_pixels_to_lab(skin_pixels_rgb, correction_matrix)
+    method = "flat-fallback" if skin_regions_rgb is not None else "flat-pixels"
+    confidence = build_confidence_summary(
+        method=method,
+        total_pixel_count=len(skin_pixels_rgb),
+        region_summary=region_summary,
+        minimum_region_pixels=minimum_region_pixels,
+    )
+    return RepresentativeSkinAnalysis(
+        skin_lab=trimmed_mean_lab(lab_pixels),
+        method=method,
+        fallback_used=method == "flat-fallback",
+        total_pixel_count=len(skin_pixels_rgb),
+        valid_region_count=(
+            0 if region_summary is None else len(region_summary.valid_region_names)
+        ),
+        region_pixel_counts=(
+            {} if region_summary is None else region_summary.region_pixel_counts
+        ),
+        max_region_delta_e=(
+            None if region_summary is None else region_summary.max_region_delta_e
+        ),
+        confidence=confidence,
+    )
 
 
 def lab_to_hex(lab: np.ndarray) -> str:

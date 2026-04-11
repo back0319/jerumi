@@ -141,37 +141,39 @@ export const SKIN_REGIONS: FaceRegionDefinition[] = [
   {
     name: "below_lips",
     buildPoints: (canvas, landmarks) => [
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.18),
+      // Keep this ROI slightly lower than the vermilion border to reduce lip-color bleed.
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.28),
       interpolateLandmark(
         canvas,
         landmarks,
         LOWER_LIP_LEFT_INNER,
         CHIN_TIP,
-        0.16,
+        0.25,
       ),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.12),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.22),
       interpolateLandmark(
         canvas,
         landmarks,
         LOWER_LIP_RIGHT_INNER,
         CHIN_TIP,
-        0.16,
+        0.25,
       ),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.18),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.38),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.46),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.38),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.28),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.46),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.54),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.46),
     ],
   },
   {
     name: "chin",
     buildPoints: (canvas, landmarks) => [
-      interpolateLandmark(canvas, landmarks, LEFT_JAW, CHIN_TIP, 0.38),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.58),
-      interpolateLandmark(canvas, landmarks, RIGHT_JAW, CHIN_TIP, 0.38),
-      interpolateLandmark(canvas, landmarks, RIGHT_JAW, CHIN_TIP, 0.18),
+      // Pull the chin ROI slightly downward so it overlaps less with below_lips.
+      interpolateLandmark(canvas, landmarks, LEFT_JAW, CHIN_TIP, 0.5),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.68),
+      interpolateLandmark(canvas, landmarks, RIGHT_JAW, CHIN_TIP, 0.5),
+      interpolateLandmark(canvas, landmarks, RIGHT_JAW, CHIN_TIP, 0.24),
       projectLandmark(canvas, landmarks[CHIN_TIP]),
-      interpolateLandmark(canvas, landmarks, LEFT_JAW, CHIN_TIP, 0.18),
+      interpolateLandmark(canvas, landmarks, LEFT_JAW, CHIN_TIP, 0.24),
     ],
   },
 ];

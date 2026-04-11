@@ -40,7 +40,24 @@ class RecommendationItem(BaseModel):
     undertone: str | None
 
 
+class AnalysisConfidence(BaseModel):
+    score: float
+    level: str
+    notes: list[str] = Field(default_factory=list)
+
+
+class AnalysisMeta(BaseModel):
+    method: str
+    fallback_used: bool
+    total_pixel_count: int
+    valid_region_count: int
+    region_pixel_counts: dict[str, int] = Field(default_factory=dict)
+    max_region_delta_e: float | None = None
+    confidence: AnalysisConfidence
+
+
 class AnalysisResponse(BaseModel):
     skin_lab: list[float]
     skin_hex: str
     recommendations: list[RecommendationItem]
+    analysis_meta: AnalysisMeta
