@@ -117,22 +117,150 @@ def rgb_pixels_to_lab(
     return lab
 
 
+def _trim_lightness(lab: np.ndarray) -> np.ndarray:
+    """Remove highlight and shadow extremes from a LAB sample."""
+    candidates = lab
+    if len(candidates) < 20:
+        return candidates
+
+    lightness = candidates[:, 0]
+    p10 = np.percentile(lightness, 10)
+    p90 = np.percentile(lightness, 90)
+    lightness_mask = (lightness >= p10) & (lightness <= p90)
+
+    if np.sum(lightness_mask) >= 10:
+        return candidates[lightness_mask]
+
+    return candidates
+
+
+def _trim_redness(lab: np.ndarray, upper_percentile: float = 90.0) -> np.ndarray:
+    """Suppress the reddest tail of a LAB sample for lower-face ROI analysis."""
+    candidates = lab
+    if len(candidates) < 20:
+        return candidates
+
+    redness_cutoff = np.percentile(candidates[:, 1], upper_percentile)
+    redness_mask = candidates[:, 1] <= redness_cutoff
+
+    if np.sum(redness_mask) >= max(10, len(candidates) // 2):
+        return candidates[redness_mask]
+
+    return candidates
+
+
+def _mad_filter_lab(lab: np.ndarray) -> np.ndarray:
+    """Remove multichannel LAB outliers with a conservative MAD filter."""
+    candidates = lab
+    if len(candidates) < 15:
+        return candidates
+
+    median = np.median(candidates, axis=0)
+    mad = np.median(np.abs(candidates - median), axis=0)
+    mad = np.where(mad < 1e-6, 1.0, mad)
+
+    robust_z = 0.6745 * (candidates - median) / mad
+    outlier_mask = np.max(np.abs(robust_z), axis=1) <= 2.5
+
+    if np.sum(outlier_mask) >= max(8, len(candidates) // 4):
+        return candidates[outlier_mask]
+
+    return candidates
+
+
+def _nearest_sample_to_centroid(lab: np.ndarray) -> np.ndarray:
+    """Choose the actual sampled pixel nearest to the cleaned cluster centroid."""
+    centroid = np.mean(lab, axis=0)
+    distances = np.sum((lab - centroid) ** 2, axis=1)
+    return lab[np.argmin(distances)]
+
+
+def _representative_lab(
+    lab: np.ndarray,
+    *,
+    trim_redness_percentile: float | None = None,
+) -> np.ndarray:
+    """Return a robust representative LAB sample from a cluster of pixels."""
+    if len(lab) == 0:
+        raise ValueError("LAB pixel array must not be empty")
+
+    candidates = _trim_lightness(lab)
+
+    if trim_redness_percentile is not None:
+        candidates = _trim_redness(candidates, trim_redness_percentile)
+
+    candidates = _mad_filter_lab(candidates)
+    return _nearest_sample_to_centroid(candidates)
+
+
 def trimmed_mean_lab(lab: np.ndarray) -> np.ndarray:
-    """Compute trimmed mean of LAB values, using 10th-90th percentile of L to
-    exclude highlights and shadows."""
-    L = lab[:, 0]
+    """Compute a robust representative LAB value from a flat skin pixel sample.
 
-    if len(L) < 20:
-        return np.mean(lab, axis=0)
+    This keeps the previously introduced highlight/shadow cleanup and LAB MAD
+    filtering for legacy flat ROI payloads and swatch analysis.
+    """
+    return _representative_lab(lab)
 
-    p10 = np.percentile(L, 10)
-    p90 = np.percentile(L, 90)
-    mask = (L >= p10) & (L <= p90)
 
-    if np.sum(mask) < 10:
-        return np.mean(lab, axis=0)
+def representative_region_lab(lab: np.ndarray) -> np.ndarray:
+    """Compute a robust LAB representative for a single named facial region.
 
-    return np.mean(lab[mask], axis=0)
+    Compared with the legacy flat path, this adds an explicit upper-tail trim on
+    the a* axis to suppress localized redness before the LAB MAD filter.
+    """
+    return _representative_lab(lab, trim_redness_percentile=90.0)
+
+
+def select_medoid_lab(region_labs: list[np.ndarray]) -> np.ndarray:
+    """Select the LAB sample with the smallest summed CIEDE2000 distance."""
+    if not region_labs:
+        raise ValueError("At least one region LAB value is required")
+
+    if len(region_labs) == 1:
+        return region_labs[0]
+
+    stacked = np.array(region_labs, dtype=np.float64)
+    comparisons = stacked.reshape(-1, 1, 3)
+    total_distances: list[float] = []
+
+    for index in range(len(stacked)):
+        reference = np.repeat(
+            stacked[index].reshape(1, 1, 3),
+            len(stacked),
+            axis=0,
+        )
+        total_distance = float(np.sum(delta_E(reference, comparisons, method="CIE 2000")))
+        total_distances.append(total_distance)
+
+    return stacked[int(np.argmin(total_distances))]
+
+
+def representative_skin_lab_from_regions(
+    region_pixels_rgb: dict[str, list[list[float]]],
+    correction_matrix: np.ndarray | None = None,
+    minimum_pixels: int = 50,
+) -> np.ndarray | None:
+    """Compute a representative skin LAB value from grouped facial regions.
+
+    Each region is summarized independently, then the final representative color
+    is chosen as the CIEDE2000 medoid across valid region representatives.
+    """
+    region_representatives: list[np.ndarray] = []
+
+    for pixels in region_pixels_rgb.values():
+        if len(pixels) < minimum_pixels:
+            continue
+
+        lab = rgb_pixels_to_lab(pixels, correction_matrix)
+        region_representatives.append(representative_region_lab(lab))
+
+    if not region_representatives:
+        return None
+
+    if len(region_representatives) == 1:
+        return region_representatives[0]
+
+    return select_medoid_lab(region_representatives)
 
 
 def lab_to_hex(lab: np.ndarray) -> str:

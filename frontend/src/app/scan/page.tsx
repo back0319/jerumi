@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiPost } from "@/lib/api";
 import {
   buildRegionPolygons,
-  extractSkinPixels,
+  extractSkinPixelsByRegion,
+  flattenSkinRegionPixels,
   type FaceRegionPolygon,
   SKIN_REGIONS,
+  type SkinRegionPixels,
 } from "@/lib/facemesh";
 import {
   COLORCHECKER_REFERENCE,
@@ -20,6 +22,11 @@ import CameraCapture from "@/components/CameraCapture";
 type Step = "upload" | "camera" | "checker" | "analyzing" | "done";
 type CheckerImageStatus = "idle" | "loading" | "ready" | "error";
 type OverlayMode = "facemesh" | "fallback";
+
+type ExtractedSkinData = {
+  combinedPixels: number[][];
+  skinRegions: SkinRegionPixels | null;
+};
 
 type AnalysisOverlay = {
   mode: OverlayMode;
@@ -62,6 +69,31 @@ function averagePixelsToHex(pixels: number[][]): string {
     .padStart(2, "0")}${avgB.toString(16).padStart(2, "0")}`;
 }
 
+function downsamplePixels(pixels: number[][], maxCount: number): number[][] {
+  if (pixels.length <= maxCount) return pixels;
+
+  const step = Math.ceil(pixels.length / maxCount);
+  return pixels.filter((_, index) => index % step === 0);
+}
+
+function downsampleSkinRegions(
+  skinRegions: SkinRegionPixels,
+  maxPerRegion: number,
+): SkinRegionPixels {
+  return {
+    lower_left_cheek: downsamplePixels(
+      skinRegions.lower_left_cheek,
+      maxPerRegion,
+    ),
+    lower_right_cheek: downsamplePixels(
+      skinRegions.lower_right_cheek,
+      maxPerRegion,
+    ),
+    below_lips: downsamplePixels(skinRegions.below_lips, maxPerRegion),
+    chin: downsamplePixels(skinRegions.chin, maxPerRegion),
+  };
+}
+
 function getDeltaEBadgeClass(deltaE: number): string {
   if (deltaE <= 1.0) return "bg-green-100 text-green-700";
   if (deltaE <= 2.0) return "bg-emerald-100 text-emerald-700";
@@ -73,12 +105,16 @@ function getDeltaEBadgeClass(deltaE: number): string {
 export default function ScanPage() {
   const FACE_MESH_TIMEOUT_MS = 8000;
   const INITIAL_VISIBLE_RECOMMENDATIONS = 4;
+  const MAX_ANALYSIS_PIXELS = 10000;
+  const MAX_REGION_ANALYSIS_PIXELS = 2500;
   const [step, setStep] = useState<Step>("upload");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAllRecommendations, setShowAllRecommendations] = useState(false);
-  const [skinPixels, setSkinPixels] = useState<number[][] | null>(null);
+  const [skinExtraction, setSkinExtraction] = useState<ExtractedSkinData | null>(
+    null,
+  );
   const [checkerPatches, setCheckerPatches] = useState<MeasuredPatch[]>([]);
   const [selectingPatch, setSelectingPatch] = useState<number | null>(null);
   const [checkerImageStatus, setCheckerImageStatus] =
@@ -193,13 +229,13 @@ export default function ScanPage() {
 
   const completeSkinExtraction = useCallback(
     (
-      pixels: number[][],
+      extractedSkin: ExtractedSkinData,
       overlay: AnalysisOverlay,
       nextError: string | null = null,
     ) => {
       detectionCompletedRef.current = true;
       clearDetectionTimeout();
-      setSkinPixels(pixels);
+      setSkinExtraction(extractedSkin);
       setAnalysisOverlay(overlay);
       redrawPreviewCanvas(overlay);
       setError(nextError);
@@ -218,6 +254,7 @@ export default function ScanPage() {
       }
       revokeUploadedObjectUrl();
       setError(null);
+      setSkinExtraction(null);
       setAnalysisOverlay(null);
       const url = URL.createObjectURL(file);
       uploadedObjectUrlRef.current = url;
@@ -246,6 +283,7 @@ export default function ScanPage() {
     (dataUrl: string) => {
       revokeUploadedObjectUrl();
       setError(null);
+      setSkinExtraction(null);
       setAnalysisOverlay(null);
       setImageUrl(dataUrl);
       setStep("upload");
@@ -282,7 +320,7 @@ export default function ScanPage() {
   const fallbackExtract = useCallback(
     (
       canvas: HTMLCanvasElement,
-      nextError = "얼굴 자동 인식이 지연되어 중앙 영역으로 계속 진행합니다.",
+      nextError = "얼굴 자동 인식이 지연되어 하부 중심 영역 기준으로 계속 진행합니다.",
     ) => {
       if (detectionCompletedRef.current) return;
 
@@ -294,11 +332,11 @@ export default function ScanPage() {
 
       const w = canvas.width;
       const h = canvas.height;
-      const cx = Math.round(w * 0.35);
-      const cy = Math.round(h * 0.3);
-      const cw = Math.round(w * 0.3);
-      const ch = Math.round(h * 0.3);
-      const imageData = ctx.getImageData(cx, cy, cw, ch);
+      const rectX = Math.round(w * 0.35);
+      const rectY = Math.round(h * 0.46);
+      const rectWidth = Math.round(w * 0.3);
+      const rectHeight = Math.round(h * 0.24);
+      const imageData = ctx.getImageData(rectX, rectY, rectWidth, rectHeight);
       const pixels: number[][] = [];
 
       for (let i = 0; i < imageData.data.length; i += 4) {
@@ -319,32 +357,36 @@ export default function ScanPage() {
       }
 
       completeSkinExtraction(
-        pixels,
+        {
+          combinedPixels: pixels,
+          skinRegions: null,
+        },
         {
           mode: "fallback",
           pixelCount: pixels.length,
           sampleHex: averagePixelsToHex(pixels),
           polygons: [
             {
+              name: "fallback",
               points: [
-                { x: cx, y: cy },
-                { x: cx + cw, y: cy },
-                { x: cx + cw, y: cy + ch },
-                { x: cx, y: cy + ch },
+                { x: rectX, y: rectY },
+                { x: rectX + rectWidth, y: rectY },
+                { x: rectX + rectWidth, y: rectY + rectHeight },
+                { x: rectX, y: rectY + rectHeight },
               ],
               bounds: {
-                minX: cx,
-                minY: cy,
-                maxX: cx + cw,
-                maxY: cy + ch,
+                minX: rectX,
+                minY: rectY,
+                maxX: rectX + rectWidth,
+                maxY: rectY + rectHeight,
               },
             },
           ],
           fallbackRect: {
-            x: cx,
-            y: cy,
-            width: cw,
-            height: ch,
+            x: rectX,
+            y: rectY,
+            width: rectWidth,
+            height: rectHeight,
           },
         },
         nextError,
@@ -383,35 +425,46 @@ export default function ScanPage() {
         ) {
           fallbackExtract(
             canvas,
-            "얼굴을 감지하지 못해 중앙 영역 기준으로 계속 진행합니다.",
+            "얼굴을 감지하지 못해 하부 중심 영역 기준으로 계속 진행합니다.",
           );
           return;
         }
 
         const landmarks = results.multiFaceLandmarks[0];
-        const pixels = extractSkinPixels(canvas, landmarks, SKIN_REGIONS);
+        const skinRegions = extractSkinPixelsByRegion(
+          canvas,
+          landmarks,
+          SKIN_REGIONS,
+        );
+        const pixels = flattenSkinRegionPixels(skinRegions);
         const polygons = buildRegionPolygons(canvas, landmarks, SKIN_REGIONS);
 
         if (pixels.length < 100) {
           fallbackExtract(
             canvas,
-            "피부 영역 픽셀이 적어 중앙 영역 기준으로 계속 진행합니다.",
+            "대표 피부색 후보 픽셀이 적어 하부 중심 영역 기준으로 계속 진행합니다.",
           );
           return;
         }
 
-        completeSkinExtraction(pixels, {
-          mode: "facemesh",
-          pixelCount: pixels.length,
-          sampleHex: averagePixelsToHex(pixels),
-          polygons,
-        });
+        completeSkinExtraction(
+          {
+            combinedPixels: pixels,
+            skinRegions,
+          },
+          {
+            mode: "facemesh",
+            pixelCount: pixels.length,
+            sampleHex: averagePixelsToHex(pixels),
+            polygons,
+          },
+        );
       });
 
       await faceMesh.send({ image: canvas });
     } catch (err) {
       console.warn(
-        "MediaPipe Face Mesh 로딩 실패, 전체 이미지 중앙 영역 사용:",
+        "MediaPipe Face Mesh 로딩 실패, 하부 중심 fallback 영역 사용:",
         err,
       );
       fallbackExtract(canvas);
@@ -470,7 +523,7 @@ export default function ScanPage() {
   );
 
   const handleAnalyze = async () => {
-    if (!skinPixels) return;
+    if (!skinExtraction) return;
     setStep("analyzing");
     setError(null);
     setShowAllRecommendations(false);
@@ -479,14 +532,22 @@ export default function ScanPage() {
       const patches =
         checkerPatches.length >= 3 ? buildCheckerPatches(checkerPatches) : null;
 
-      let pixels = skinPixels;
-      if (pixels.length > 10000) {
-        const step = Math.ceil(pixels.length / 10000);
-        pixels = pixels.filter((_, i) => i % step === 0);
-      }
+      const sampledSkinRegions = skinExtraction.skinRegions
+        ? downsampleSkinRegions(
+            skinExtraction.skinRegions,
+            MAX_REGION_ANALYSIS_PIXELS,
+          )
+        : null;
+      const pixels = sampledSkinRegions
+        ? downsamplePixels(
+            flattenSkinRegionPixels(sampledSkinRegions),
+            MAX_ANALYSIS_PIXELS,
+          )
+        : downsamplePixels(skinExtraction.combinedPixels, MAX_ANALYSIS_PIXELS);
 
       const response = await apiPost<AnalysisResponse>("/analyze", {
         skin_pixels_rgb: pixels,
+        skin_regions_rgb: sampledSkinRegions,
         checker_patches: patches,
         top_n: 10,
       });
@@ -503,7 +564,7 @@ export default function ScanPage() {
     revokeUploadedObjectUrl();
     setStep("upload");
     setImageUrl(null);
-    setSkinPixels(null);
+    setSkinExtraction(null);
     setAnalysisOverlay(null);
     setCheckerPatches([]);
     setSelectingPatch(null);
@@ -517,7 +578,7 @@ export default function ScanPage() {
     revokeUploadedObjectUrl();
     setStep("upload");
     setImageUrl(null);
-    setSkinPixels(null);
+    setSkinExtraction(null);
     setAnalysisOverlay(null);
     setCheckerPatches([]);
     setSelectingPatch(null);
@@ -533,6 +594,7 @@ export default function ScanPage() {
     setSelectingPatch(null);
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
+    setSkinExtraction(null);
     setAnalysisOverlay(null);
   }, [imageUrl]);
 
@@ -635,7 +697,7 @@ export default function ScanPage() {
             <div className="mt-4">
               <div className="animate-spin w-8 h-8 border-4 border-rose-200 border-t-rose-600 rounded-full mx-auto mb-2" />
               <p className="text-sm text-gray-500">
-                얼굴과 피부 영역을 찾는 중입니다...
+                하부 볼, 입 아래, 턱 기준 대표 피부색 후보 영역을 찾는 중입니다...
               </p>
             </div>
           </div>
@@ -661,8 +723,9 @@ export default function ScanPage() {
                 컬러체커 보정 (선택사항)
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                패치를 3개 이상 선택하면 색 보정이 적용됩니다. 먼저 swatch를
-                고른 뒤 사진 속 같은 칸을 클릭하세요.
+                하부 볼, 입 아래, 턱 기준 추출 영역을 확인한 뒤, 패치를 3개
+                이상 선택하면 색 보정이 적용됩니다. 먼저 swatch를 고른 뒤 사진
+                속 같은 칸을 클릭하세요.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center text-xs sm:w-fit">
@@ -674,7 +737,7 @@ export default function ScanPage() {
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
-                  {skinPixels?.length?.toLocaleString() || 0}
+                  {skinExtraction?.combinedPixels.length?.toLocaleString() || 0}
                 </p>
                 <p className="text-gray-500">피부</p>
               </div>
@@ -749,13 +812,13 @@ export default function ScanPage() {
                       </p>
                       <p className="mt-1 text-xs text-gray-500">
                         {analysisOverlay.mode === "facemesh"
-                          ? "Face Mesh 피부 영역"
-                          : "중앙 fallback 영역"}
+                          ? "하부 볼·입 아래·턱 기준 대표 피부색 후보 영역"
+                          : "하부 중심 fallback 영역"}
                       </p>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
                       <p className="text-[11px] font-semibold text-gray-700">
-                        대표 샘플 색
+                        추출 영역 미리보기
                       </p>
                       <div className="mt-1 flex items-center gap-2">
                         <span

@@ -5,7 +5,7 @@ import io
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,7 @@ from app.services.color_analysis import (
     build_correction_matrix,
     compute_recommendations,
     lab_to_hex,
+    representative_skin_lab_from_regions,
     rgb_pixels_to_lab,
     trimmed_mean_lab,
 )
@@ -36,11 +37,30 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     if req.checker_patches:
         correction = build_correction_matrix(req.checker_patches)
 
-    # Convert skin pixels to LAB with correction
-    lab_pixels = rgb_pixels_to_lab(req.skin_pixels_rgb, correction)
+    region_payload = None
+    if req.skin_regions_rgb is not None:
+        region_payload = {
+            "lower_left_cheek": req.skin_regions_rgb.lower_left_cheek,
+            "lower_right_cheek": req.skin_regions_rgb.lower_right_cheek,
+            "below_lips": req.skin_regions_rgb.below_lips,
+            "chin": req.skin_regions_rgb.chin,
+        }
 
-    # Trimmed mean to get representative skin color
-    skin_lab = trimmed_mean_lab(lab_pixels)
+    skin_lab = None
+    if region_payload is not None:
+        skin_lab = representative_skin_lab_from_regions(region_payload, correction)
+
+    if skin_lab is None:
+        if not req.skin_pixels_rgb:
+            raise HTTPException(
+                status_code=422,
+                detail="skin_pixels_rgb or skin_regions_rgb is required",
+            )
+
+        # Convert flat skin pixels to LAB with correction.
+        lab_pixels = rgb_pixels_to_lab(req.skin_pixels_rgb, correction)
+        skin_lab = trimmed_mean_lab(lab_pixels)
+
     skin_hex = lab_to_hex(skin_lab)
 
     # Query foundations, optionally filtered by brand

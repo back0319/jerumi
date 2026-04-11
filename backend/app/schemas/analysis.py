@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ColorCheckerPatch(BaseModel):
@@ -7,9 +7,19 @@ class ColorCheckerPatch(BaseModel):
     measured_rgb: list[float]   # measured R, G, B (0-255)
 
 
+class SkinRegionPixels(BaseModel):
+    """Grouped facial skin pixels sampled from named ROI regions."""
+
+    lower_left_cheek: list[list[float]] = Field(default_factory=list)
+    lower_right_cheek: list[list[float]] = Field(default_factory=list)
+    below_lips: list[list[float]] = Field(default_factory=list)
+    chin: list[list[float]] = Field(default_factory=list)
+
+
 class AnalysisRequest(BaseModel):
     """Skin analysis request with color-checker calibrated pixels."""
-    skin_pixels_rgb: list[list[float]]  # [[R,G,B], ...] 0-255
+    skin_pixels_rgb: list[list[float]] | None = None  # [[R,G,B], ...] 0-255
+    skin_regions_rgb: SkinRegionPixels | None = None
     checker_patches: list[ColorCheckerPatch] | None = None
     brands: list[str] | None = None
     top_n: int = 5
