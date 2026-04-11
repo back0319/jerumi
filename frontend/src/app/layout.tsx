@@ -3,7 +3,7 @@ import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SkinMatch | 피부색 기반 파운데이션 추천",
+  title: "제루미 | 피부색 기반 파운데이션 추천",
   description:
     "컬러체커가 포함된 사진으로 피부색을 분석하고 CIEDE2000 색차로 가까운 파운데이션을 추천합니다.",
 };
@@ -22,7 +22,7 @@ export default function RootLayout({
               href="/"
               className="text-base font-semibold tracking-tight text-rose-600 sm:text-lg"
             >
-              SkinMatch
+              제루미
             </a>
             <div className="flex gap-3 text-sm font-medium sm:gap-4">
               <a
