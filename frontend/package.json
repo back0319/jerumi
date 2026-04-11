@@ -11,6 +11,7 @@
   "dependencies": {
     "@mediapipe/face_mesh": "^0.4.1633559619",
     "@mediapipe/camera_utils": "^0.3.1675466862",
+    "@vercel/analytics": "^1.5.0",
     "next": "^14.2.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
