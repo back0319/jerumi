@@ -15,6 +15,7 @@ import {
   apiAuthPut,
   apiAuthDelete,
   apiAuthPostFormData,
+  prewarmApi,
 } from "@/lib/api";
 import {
   buildRegionPolygons,
@@ -262,6 +263,7 @@ export default function AdminPage() {
   const roiImgRef = useRef<HTMLImageElement>(null);
   const roiDetectionTimeoutRef = useRef<number | null>(null);
   const roiDetectionCompletedRef = useRef(false);
+  const hasPrewarmedApiRef = useRef(false);
   const brands = buildBrandList(allFoundations);
   const foundations = filterBrand
     ? allFoundations.filter((foundation) => foundation.brand === filterBrand)
@@ -412,6 +414,12 @@ export default function AdminPage() {
       setIsLoggingIn(false);
     }
   };
+
+  useEffect(() => {
+    if (hasPrewarmedApiRef.current) return;
+    hasPrewarmedApiRef.current = true;
+    prewarmApi("/ping");
+  }, []);
 
   useEffect(() => {
     if (token) {

@@ -6,6 +6,14 @@ function buildApiUrl(path: string): string {
   return `${API_BASE_URL.replace(/\/$/, "")}${normalizedPath}`;
 }
 
+export function prewarmApi(path: string): void {
+  void fetch(buildApiUrl(path), {
+    method: "GET",
+    cache: "no-store",
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init?: RequestInit

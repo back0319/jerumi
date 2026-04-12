@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiPost } from "@/lib/api";
+import { apiPost, prewarmApi } from "@/lib/api";
 import {
   buildRegionPolygons,
   extractSkinPixelsByRegion,
@@ -163,6 +163,7 @@ export default function ScanPage() {
   const uploadedObjectUrlRef = useRef<string | null>(null);
   const detectionTimeoutRef = useRef<number | null>(null);
   const detectionCompletedRef = useRef(false);
+  const hasPrewarmedApiRef = useRef(false);
   const [analysisOverlay, setAnalysisOverlay] =
     useState<AnalysisOverlay | null>(null);
   const selectedReferencePatch =
@@ -630,6 +631,12 @@ export default function ScanPage() {
     setCheckerImageError(null);
     setShowAllRecommendations(false);
   };
+
+  useEffect(() => {
+    if (hasPrewarmedApiRef.current) return;
+    hasPrewarmedApiRef.current = true;
+    prewarmApi("/ping");
+  }, []);
 
   useEffect(() => {
     setCheckerPatches([]);
