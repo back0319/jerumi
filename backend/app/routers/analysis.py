@@ -1,5 +1,7 @@
 """Skin tone analysis and foundation recommendation endpoint."""
 
+from functools import lru_cache
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,14 +15,23 @@ from app.schemas.analysis import (
     AnalysisResponse,
     RecommendationItem,
 )
-from app.services.color_analysis import (
-    analyze_representative_skin_color,
-    build_correction_matrix,
-    compute_recommendations,
-    lab_to_hex,
-)
 
 router = APIRouter(tags=["analysis"])
+
+
+@lru_cache(maxsize=1)
+def get_color_analysis_service():
+    from app.services import color_analysis
+
+    return color_analysis
+
+
+@router.get("/analysis-ready", include_in_schema=False)
+async def warm_analysis_dependencies(db: AsyncSession = Depends(get_db)):
+    """Warm heavy analysis imports and the first foundation query for scan flow."""
+    get_color_analysis_service()
+    await db.execute(select(Foundation.id).limit(1))
+    return {"status": "ready"}
 
 
 @router.post("/analyze", response_model=AnalysisResponse)
@@ -30,10 +41,12 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     Accepts pre-extracted skin ROI pixels (RGB 0-255) from the frontend,
     along with optional color checker patches for calibration.
     """
+    color_analysis = get_color_analysis_service()
+
     # Build color correction matrix from checker patches
     correction = None
     if req.checker_patches:
-        correction = build_correction_matrix(req.checker_patches)
+        correction = color_analysis.build_correction_matrix(req.checker_patches)
 
     region_payload = None
     if req.skin_regions_rgb is not None:
@@ -45,7 +58,7 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
         }
 
     try:
-        analysis = analyze_representative_skin_color(
+        analysis = color_analysis.analyze_representative_skin_color(
             skin_pixels_rgb=req.skin_pixels_rgb,
             skin_regions_rgb=region_payload,
             correction_matrix=correction,
@@ -53,7 +66,7 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    skin_hex = lab_to_hex(analysis.skin_lab)
+    skin_hex = color_analysis.lab_to_hex(analysis.skin_lab)
 
     # Query foundations, optionally filtered by brand
     query = select(Foundation)
@@ -80,7 +93,11 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     ]
 
     # Compute CIEDE2000 and get top N
-    ranked = compute_recommendations(analysis.skin_lab, foundation_dicts, req.top_n)
+    ranked = color_analysis.compute_recommendations(
+        analysis.skin_lab,
+        foundation_dicts,
+        req.top_n,
+    )
 
     recommendations = [
         RecommendationItem(

@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     DATABASE_URL: str = "postgresql+asyncpg://skinmatch:skinmatch_dev@localhost:5432/skinmatch"
     DATABASE_CONNECT_TIMEOUT: float = 10.0
-    AUTO_CREATE_TABLES: bool = True
+    AUTO_CREATE_TABLES: bool = False
     JWT_SECRET: str = "dev-secret-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 480

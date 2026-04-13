@@ -49,7 +49,7 @@ Vercel 프로젝트에 아래 값을 설정합니다.
 ```env
 DATABASE_URL=postgresql+asyncpg://...
 DATABASE_CONNECT_TIMEOUT=10
-AUTO_CREATE_TABLES=true
+AUTO_CREATE_TABLES=false
 JWT_SECRET=replace-with-a-long-random-secret
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=replace-with-a-strong-password
@@ -64,7 +64,7 @@ CORS_ORIGIN_REGEX=
 
 - `NEXT_PUBLIC_API_URL`는 Vercel Services 배포에서는 비워두는 편이 맞습니다.
 - 프론트만 따로 `npm run dev` 할 때만 `NEXT_PUBLIC_API_URL=http://localhost:8000` 같은 override를 사용합니다.
-- `AUTO_CREATE_TABLES=true`면 API가 시작될 때 현재 모델 기준으로 테이블 생성을 시도합니다.
+- 운영 배포에서는 `AUTO_CREATE_TABLES=false`를 유지하세요. `true`면 cold start 시점에 테이블 생성 경로를 타서 첫 요청 지연이 커질 수 있습니다.
 
 ## 5) Local Development
 

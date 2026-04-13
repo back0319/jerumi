@@ -144,7 +144,7 @@ Face Mesh가 실패하면 lower-center fallback 영역으로 분석을 계속합
 PORT=8000
 DATABASE_URL=postgresql+asyncpg://skinmatch:skinmatch_dev@localhost:5432/skinmatch
 DATABASE_CONNECT_TIMEOUT=10
-AUTO_CREATE_TABLES=true
+AUTO_CREATE_TABLES=false
 JWT_SECRET=change-this-to-a-random-secret
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=change-this-admin-password
@@ -160,7 +160,7 @@ NEXT_PUBLIC_API_URL=
 
 - Vercel Services에서는 `NEXT_PUBLIC_API_URL`를 비워두는 것이 기본입니다.
 - frontend만 따로 실행할 때만 `NEXT_PUBLIC_API_URL=http://localhost:8000` 같은 값을 넣습니다.
-- 현재 backend는 `AUTO_CREATE_TABLES=true`일 때 시작 시점에 테이블 생성을 시도합니다.
+- 운영 배포에서는 `AUTO_CREATE_TABLES=false`를 유지하세요. `true`면 cold start 때마다 테이블 생성 경로를 타서 첫 응답이 크게 느려질 수 있습니다.
 
 ## 빠른 시작
 

@@ -540,7 +540,7 @@ export default function ScanPage() {
     setShowAllRecommendations(false);
   };
 
-  useApiPrewarm("/ping");
+  useApiPrewarm("/analysis-ready");
 
   useEffect(() => {
     setCheckerPatches([]);
