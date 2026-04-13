@@ -7,8 +7,6 @@ opencv-python-headless==4.10.0.84
 colour-science==0.4.6
 numpy==1.26.4
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
-pillow==10.4.0
 pydantic-settings==2.5.0
 supabase>=2.15,<3.0

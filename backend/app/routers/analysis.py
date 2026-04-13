@@ -1,6 +1,6 @@
 """Skin tone analysis and foundation recommendation endpoint."""
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -122,30 +122,3 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
             ),
         ),
     )
-
-
-@router.post("/analyze-image")
-async def analyze_image_with_checker(
-    image: UploadFile = File(...),
-):
-    """Alternative endpoint: upload full image with color checker.
-
-    The backend detects the color checker, calibrates, and extracts skin
-    from MediaPipe landmarks. This is a fallback for clients that cannot
-    run MediaPipe locally.
-    """
-    # Keep the common /analyze cold path light by loading image tooling only
-    # when this legacy upload endpoint is actually used.
-    import cv2
-    import numpy as np
-
-    contents = await image.read()
-    nparr = np.frombuffer(contents, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-    if img is None:
-        return {"error": "Could not decode image"}
-
-    # For now, return a placeholder — full server-side face mesh + checker
-    # detection can be added as a future enhancement.
-    return {"message": "Server-side analysis not yet implemented. Use /api/analyze with pre-extracted pixels."}

@@ -9,6 +9,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.services.color_analysis import (
     analyze_representative_skin_color,
+    compute_recommendations,
     representative_skin_lab_from_regions,
     rgb_pixels_to_lab,
     summarize_skin_regions,
@@ -160,6 +161,55 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
         self.assertTrue(analysis.fallback_used)
         self.assertEqual(analysis.valid_region_count, 0)
         self.assertIn("fallback 평면 경로", " ".join(analysis.confidence.notes))
+
+    def test_compute_recommendations_handles_scalar_delta_e(self) -> None:
+        skin_lab = rgb_pixels_to_lab([[198, 164, 145]])[0]
+        foundations = [
+            {
+                "id": 1,
+                "brand": "Smoke",
+                "product_name": "",
+                "shade_code": "A",
+                "shade_name": "Near",
+                "L_value": 78.0,
+                "a_value": 5.0,
+                "b_value": 12.0,
+                "hex_color": "#d8b79f",
+                "undertone": None,
+            },
+            {
+                "id": 2,
+                "brand": "Smoke",
+                "product_name": "",
+                "shade_code": "B",
+                "shade_name": "Far",
+                "L_value": 65.0,
+                "a_value": 15.0,
+                "b_value": 25.0,
+                "hex_color": "#b07f5d",
+                "undertone": None,
+            },
+        ]
+
+        recommendations = compute_recommendations(skin_lab, foundations, top_n=2)
+
+        self.assertEqual(len(recommendations), 2)
+        self.assertLess(recommendations[0]["delta_e"], recommendations[1]["delta_e"])
+        expected_first = min(
+            foundations,
+            key=lambda foundation: delta_e_between(
+                skin_lab,
+                np.array(
+                    [
+                        foundation["L_value"],
+                        foundation["a_value"],
+                        foundation["b_value"],
+                    ],
+                    dtype=np.float64,
+                ),
+            ),
+        )
+        self.assertEqual(recommendations[0]["shade_name"], expected_first["shade_name"])
 
 
 if __name__ == "__main__":

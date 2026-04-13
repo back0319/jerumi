@@ -509,7 +509,7 @@ def compute_recommendations(
 
     for f in foundations:
         shade_lab = np.array([f["L_value"], f["a_value"], f["b_value"]]).reshape(1, 1, 3)
-        de = float(delta_E(skin, shade_lab, method="CIE 2000"))
+        de = float(np.squeeze(delta_E(skin, shade_lab, method="CIE 2000")))
         rounded_de = round(de, 3)
         category, delta_range, description = categorize_delta_e(rounded_de)
         results.append(

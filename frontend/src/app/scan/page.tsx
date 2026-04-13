@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiPost, prewarmApi } from "@/lib/api";
+import { apiPost } from "@/lib/api";
+import { useApiPrewarm } from "@/hooks/useApiPrewarm";
 import {
   buildRegionPolygons,
   extractSkinPixelsByRegion,
@@ -16,117 +17,26 @@ import {
   type MeasuredPatch,
   buildCheckerPatches,
 } from "@/lib/colorChecker";
+import {
+  averagePixelsToHex,
+  downsamplePixels,
+  downsampleSkinRegions,
+  FALLBACK_OVERLAY_FILL,
+  FALLBACK_OVERLAY_STROKE,
+  getSkinRegionPixelCounts,
+  isSkinRegionKey,
+  type SkinExtraction,
+  type SkinOverlayBase,
+  SKIN_REGION_OVERLAY_STYLES,
+} from "@/lib/skinSampling";
 import type { AnalysisResponse } from "@/types";
 import CameraCapture from "@/components/CameraCapture";
 
 type Step = "upload" | "camera" | "checker" | "analyzing" | "done";
 type CheckerImageStatus = "idle" | "loading" | "ready" | "error";
-type OverlayMode = "facemesh" | "fallback";
-type RegionKey = keyof SkinRegionPixels;
-
-type ExtractedSkinData = {
-  combinedPixels: number[][];
-  skinRegions: SkinRegionPixels | null;
-};
-
-type AnalysisOverlay = {
-  mode: OverlayMode;
-  pixelCount: number;
+type AnalysisOverlay = SkinOverlayBase & {
   sampleHex: string;
-  polygons: FaceRegionPolygon[];
-  regionPixelCounts: Partial<Record<RegionKey, number>>;
-  fallbackRect?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
 };
-
-const FALLBACK_FILL = "rgba(59, 130, 246, 0.18)";
-const FALLBACK_STROKE = "#2563eb";
-const REGION_OVERLAY_STYLES: Record<
-  RegionKey,
-  { fill: string; stroke: string }
-> = {
-  lower_left_cheek: {
-    fill: "rgba(244, 63, 94, 0.18)",
-    stroke: "#e11d48",
-  },
-  lower_right_cheek: {
-    fill: "rgba(249, 115, 22, 0.18)",
-    stroke: "#ea580c",
-  },
-  below_lips: {
-    fill: "rgba(16, 185, 129, 0.18)",
-    stroke: "#059669",
-  },
-  chin: {
-    fill: "rgba(59, 130, 246, 0.18)",
-    stroke: "#2563eb",
-  },
-};
-
-function averagePixelsToHex(pixels: number[][]): string {
-  if (pixels.length === 0) return "#000000";
-
-  let r = 0;
-  let g = 0;
-  let b = 0;
-
-  for (const pixel of pixels) {
-    r += pixel[0];
-    g += pixel[1];
-    b += pixel[2];
-  }
-
-  const count = pixels.length;
-  const avgR = Math.round(r / count);
-  const avgG = Math.round(g / count);
-  const avgB = Math.round(b / count);
-
-  return `#${avgR.toString(16).padStart(2, "0")}${avgG
-    .toString(16)
-    .padStart(2, "0")}${avgB.toString(16).padStart(2, "0")}`;
-}
-
-function downsamplePixels(pixels: number[][], maxCount: number): number[][] {
-  if (pixels.length <= maxCount) return pixels;
-
-  const step = Math.ceil(pixels.length / maxCount);
-  return pixels.filter((_, index) => index % step === 0);
-}
-
-function downsampleSkinRegions(
-  skinRegions: SkinRegionPixels,
-  maxPerRegion: number,
-): SkinRegionPixels {
-  return {
-    lower_left_cheek: downsamplePixels(
-      skinRegions.lower_left_cheek,
-      maxPerRegion,
-    ),
-    lower_right_cheek: downsamplePixels(
-      skinRegions.lower_right_cheek,
-      maxPerRegion,
-    ),
-    below_lips: downsamplePixels(skinRegions.below_lips, maxPerRegion),
-    chin: downsamplePixels(skinRegions.chin, maxPerRegion),
-  };
-}
-
-function getSkinRegionPixelCounts(
-  skinRegions: SkinRegionPixels | null,
-): Partial<Record<RegionKey, number>> {
-  if (!skinRegions) return {};
-
-  return {
-    lower_left_cheek: skinRegions.lower_left_cheek.length,
-    lower_right_cheek: skinRegions.lower_right_cheek.length,
-    below_lips: skinRegions.below_lips.length,
-    chin: skinRegions.chin.length,
-  };
-}
 
 function getDeltaEBadgeClass(deltaE: number): string {
   if (deltaE <= 1.0) return "bg-green-100 text-green-700";
@@ -146,7 +56,7 @@ export default function ScanPage() {
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAllRecommendations, setShowAllRecommendations] = useState(false);
-  const [skinExtraction, setSkinExtraction] = useState<ExtractedSkinData | null>(
+  const [skinExtraction, setSkinExtraction] = useState<SkinExtraction | null>(
     null,
   );
   const [checkerPatches, setCheckerPatches] = useState<MeasuredPatch[]>([]);
@@ -163,7 +73,6 @@ export default function ScanPage() {
   const uploadedObjectUrlRef = useRef<string | null>(null);
   const detectionTimeoutRef = useRef<number | null>(null);
   const detectionCompletedRef = useRef(false);
-  const hasPrewarmedApiRef = useRef(false);
   const [analysisOverlay, setAnalysisOverlay] =
     useState<AnalysisOverlay | null>(null);
   const selectedReferencePatch =
@@ -220,12 +129,11 @@ export default function ScanPage() {
       if (polygon.points.length === 0) continue;
 
       const regionStyle =
-        overlay.mode === "facemesh" &&
-        polygon.name in REGION_OVERLAY_STYLES
-          ? REGION_OVERLAY_STYLES[polygon.name as RegionKey]
+        overlay.mode === "facemesh" && isSkinRegionKey(polygon.name)
+          ? SKIN_REGION_OVERLAY_STYLES[polygon.name]
           : null;
-      const strokeColor = regionStyle?.stroke ?? FALLBACK_STROKE;
-      const fillColor = regionStyle?.fill ?? FALLBACK_FILL;
+      const strokeColor = regionStyle?.stroke ?? FALLBACK_OVERLAY_STROKE;
+      const fillColor = regionStyle?.fill ?? FALLBACK_OVERLAY_FILL;
 
       ctx.beginPath();
       ctx.moveTo(polygon.points[0].x, polygon.points[0].y);
@@ -240,8 +148,8 @@ export default function ScanPage() {
     }
 
     if (overlay.fallbackRect) {
-      ctx.strokeStyle = FALLBACK_STROKE;
-      ctx.fillStyle = FALLBACK_FILL;
+      ctx.strokeStyle = FALLBACK_OVERLAY_STROKE;
+      ctx.fillStyle = FALLBACK_OVERLAY_FILL;
       ctx.fillRect(
         overlay.fallbackRect.x,
         overlay.fallbackRect.y,
@@ -267,7 +175,7 @@ export default function ScanPage() {
 
   const completeSkinExtraction = useCallback(
     (
-      extractedSkin: ExtractedSkinData,
+      extractedSkin: SkinExtraction,
       overlay: AnalysisOverlay,
       nextError: string | null = null,
     ) => {
@@ -632,11 +540,7 @@ export default function ScanPage() {
     setShowAllRecommendations(false);
   };
 
-  useEffect(() => {
-    if (hasPrewarmedApiRef.current) return;
-    hasPrewarmedApiRef.current = true;
-    prewarmApi("/ping");
-  }, []);
+  useApiPrewarm("/ping");
 
   useEffect(() => {
     setCheckerPatches([]);
