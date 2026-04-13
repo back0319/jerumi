@@ -24,12 +24,11 @@
   - MediaPipe Face Mesh 기반 피부 ROI 추출
   - 컬러체커 패치 선택을 통한 색 보정
   - 대표 피부색 계산 후 파운데이션 추천
-  - ROI별 픽셀 수, fallback 여부, confidence 확인
-  - 평가 JSON export
 - `/admin`
   - 관리자 로그인
   - 파운데이션 수동 등록 / 수정 / 삭제
   - 스와치 사진 업로드 후 자동 색상 추출 및 저장
+  - 관리자 전용 ROI 검증 패널
 - `/api`
   - FastAPI 기반 인증, 분석, 파운데이션 CRUD
 
@@ -83,9 +82,9 @@ Face Mesh가 실패하면 lower-center fallback 영역으로 분석을 계속합
   - FastAPI
   - SQLAlchemy Async
   - asyncpg
-  - colour-science
-  - OpenCV
+  - NumPy 기반 자체 색 공간 변환 / CIEDE2000 계산
   - Pillow
+  - OpenCV (로컬 시드 스크립트 전용)
 - Infra
   - Vercel Services
   - Supabase Postgres
@@ -161,6 +160,7 @@ NEXT_PUBLIC_API_URL=
 - Vercel Services에서는 `NEXT_PUBLIC_API_URL`를 비워두는 것이 기본입니다.
 - frontend만 따로 실행할 때만 `NEXT_PUBLIC_API_URL=http://localhost:8000` 같은 값을 넣습니다.
 - 운영 배포에서는 `AUTO_CREATE_TABLES=false`를 유지하세요. `true`면 cold start 때마다 테이블 생성 경로를 타서 첫 응답이 크게 느려질 수 있습니다.
+- `backend/requirements.txt`는 Vercel 런타임용 최소 의존성입니다. 로컬 backend 단독 실행이나 Docker 개발 환경에서는 `backend/requirements-dev.txt`를 사용하세요.
 
 ## 빠른 시작
 
@@ -183,7 +183,7 @@ docker compose up --build
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r backend/requirements.txt
+pip install -r backend/requirements-dev.txt
 cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```

@@ -13,15 +13,15 @@ Pipeline:
 from dataclasses import dataclass
 
 import numpy as np
-from colour import (
-    Lab_to_XYZ,
-    XYZ_to_Lab,
-    XYZ_to_sRGB,
-    delta_E,
-    sRGB_to_XYZ,
-)
 
 from app.schemas.analysis import ColorCheckerPatch
+from app.utils.color_math import (
+    delta_e_ciede2000,
+    lab_to_xyz,
+    srgb_to_xyz,
+    xyz_to_lab,
+    xyz_to_srgb,
+)
 
 
 @dataclass
@@ -110,11 +110,11 @@ def build_correction_matrix(
     for p in patches:
         rgb = np.array(p.measured_rgb) / 255.0
         rgb = np.clip(rgb, 0, 1).reshape(1, 1, 3)
-        m_xyz = sRGB_to_XYZ(rgb).reshape(3)
+        m_xyz = srgb_to_xyz(rgb).reshape(3)
         measured_xyz_list.append(m_xyz)
 
         ref_lab = np.array(p.reference_lab).reshape(1, 1, 3)
-        r_xyz = Lab_to_XYZ(ref_lab).reshape(3)
+        r_xyz = lab_to_xyz(ref_lab).reshape(3)
         reference_xyz_list.append(r_xyz)
 
     M_measured = np.array(measured_xyz_list)  # (N, 3)
@@ -135,7 +135,7 @@ def rgb_pixels_to_lab(
     arr = np.clip(arr, 0, 1)
 
     # Convert to XYZ
-    xyz = sRGB_to_XYZ(arr.reshape(-1, 1, 3)).reshape(-1, 3)
+    xyz = srgb_to_xyz(arr.reshape(-1, 1, 3)).reshape(-1, 3)
 
     # Apply color checker correction if available
     if correction_matrix is not None:
@@ -143,7 +143,7 @@ def rgb_pixels_to_lab(
         xyz = np.clip(xyz, 0, None)
 
     # XYZ → CIELAB
-    lab = XYZ_to_Lab(xyz.reshape(-1, 1, 3)).reshape(-1, 3)
+    lab = xyz_to_lab(xyz.reshape(-1, 1, 3)).reshape(-1, 3)
     return lab
 
 
@@ -259,7 +259,7 @@ def select_medoid_lab(region_labs: list[np.ndarray]) -> np.ndarray:
             len(stacked),
             axis=0,
         )
-        total_distance = float(np.sum(delta_E(reference, comparisons, method="CIE 2000")))
+        total_distance = float(np.sum(delta_e_ciede2000(reference, comparisons)))
         total_distances.append(total_distance)
 
     return stacked[int(np.argmin(total_distances))]
@@ -275,10 +275,9 @@ def _max_pairwise_delta_e(region_labs: list[np.ndarray]) -> float | None:
         for right_index in range(left_index + 1, len(region_labs)):
             distance = float(
                 np.squeeze(
-                    delta_E(
+                    delta_e_ciede2000(
                         region_labs[left_index].reshape(1, 1, 3),
                         region_labs[right_index].reshape(1, 1, 3),
-                        method="CIE 2000",
                     )
                 )
             )
@@ -491,8 +490,8 @@ def analyze_representative_skin_color(
 
 def lab_to_hex(lab: np.ndarray) -> str:
     """Convert a single LAB value to hex color string."""
-    xyz = Lab_to_XYZ(lab.reshape(1, 1, 3))
-    rgb = XYZ_to_sRGB(xyz).reshape(3)
+    xyz = lab_to_xyz(lab.reshape(1, 1, 3))
+    rgb = xyz_to_srgb(xyz).reshape(3)
     rgb = np.clip(rgb, 0, 1)
     r, g, b = (rgb * 255).astype(int)
     return f"#{r:02x}{g:02x}{b:02x}"
@@ -509,7 +508,7 @@ def compute_recommendations(
 
     for f in foundations:
         shade_lab = np.array([f["L_value"], f["a_value"], f["b_value"]]).reshape(1, 1, 3)
-        de = float(np.squeeze(delta_E(skin, shade_lab, method="CIE 2000")))
+        de = float(np.squeeze(delta_e_ciede2000(skin, shade_lab)))
         rounded_de = round(de, 3)
         category, delta_range, description = categorize_delta_e(rounded_de)
         results.append(

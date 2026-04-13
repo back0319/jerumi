@@ -65,6 +65,7 @@ CORS_ORIGIN_REGEX=
 - `NEXT_PUBLIC_API_URL`는 Vercel Services 배포에서는 비워두는 편이 맞습니다.
 - 프론트만 따로 `npm run dev` 할 때만 `NEXT_PUBLIC_API_URL=http://localhost:8000` 같은 override를 사용합니다.
 - 운영 배포에서는 `AUTO_CREATE_TABLES=false`를 유지하세요. `true`면 cold start 시점에 테이블 생성 경로를 타서 첫 요청 지연이 커질 수 있습니다.
+- `backend/requirements.txt`는 Vercel 런타임용 최소 의존성만 유지하세요. 개발용 패키지는 `backend/requirements-dev.txt`로 분리하는 편이 cold start와 번들 크기 관리에 유리합니다.
 
 ## 5) Local Development
 

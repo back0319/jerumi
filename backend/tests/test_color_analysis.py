@@ -3,7 +3,6 @@ from pathlib import Path
 import sys
 
 import numpy as np
-from colour import delta_E
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -15,6 +14,7 @@ from app.services.color_analysis import (
     summarize_skin_regions,
     trimmed_mean_lab,
 )
+from app.utils.color_math import delta_e_ciede2000
 
 
 def make_pixels(rgb: list[int], count: int, jitter: int = 0) -> list[list[float]]:
@@ -34,10 +34,9 @@ def make_pixels(rgb: list[int], count: int, jitter: int = 0) -> list[list[float]
 def delta_e_between(left: np.ndarray, right: np.ndarray) -> float:
     return float(
         np.squeeze(
-            delta_E(
+            delta_e_ciede2000(
                 np.array(left, dtype=np.float64).reshape(1, 1, 3),
                 np.array(right, dtype=np.float64).reshape(1, 1, 3),
-                method="CIE 2000",
             )
         )
     )
@@ -210,6 +209,12 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
             ),
         )
         self.assertEqual(recommendations[0]["shade_name"], expected_first["shade_name"])
+
+    def test_delta_e_ciede2000_matches_reference_pair(self) -> None:
+        left = np.array([50.0, 2.6772, -79.7751], dtype=np.float64)
+        right = np.array([50.0, 0.0, -82.7485], dtype=np.float64)
+
+        self.assertAlmostEqual(delta_e_between(left, right), 2.0425, places=4)
 
 
 if __name__ == "__main__":

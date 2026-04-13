@@ -2,6 +2,7 @@
 
 import json
 import logging
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
@@ -17,16 +18,23 @@ from app.schemas.foundation import (
     FoundationOut,
     FoundationUpdate,
 )
-from app.services.storage import (
-    StorageConfigError,
-    StorageOperationError,
-    delete_public_asset,
-    upload_swatch_image,
-)
-from app.services.swatch_extraction import extract_swatch_from_image
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/foundations", tags=["foundations"])
+
+
+@lru_cache(maxsize=1)
+def get_swatch_extraction_service():
+    from app.services import swatch_extraction
+
+    return swatch_extraction
+
+
+@lru_cache(maxsize=1)
+def get_storage_service():
+    from app.services import storage
+
+    return storage
 
 
 @router.post("/analyze-swatch", response_model=FoundationAnalysisResult)
@@ -54,7 +62,7 @@ async def analyze_swatch(
             raise HTTPException(status_code=400, detail=f"Invalid checker_patches JSON: {e}")
 
     try:
-        result = extract_swatch_from_image(contents, patches)
+        result = get_swatch_extraction_service().extract_swatch_from_image(contents, patches)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -90,21 +98,21 @@ async def create_foundation_from_photo(
             raise HTTPException(status_code=400, detail=f"Invalid checker_patches JSON: {e}")
 
     try:
-        result = extract_swatch_from_image(contents, patches)
+        result = get_swatch_extraction_service().extract_swatch_from_image(contents, patches)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
-        upload_result = upload_swatch_image(
+        upload_result = get_storage_service().upload_swatch_image(
             image_bytes=contents,
             brand=brand,
             shade_name=shade_name,
             content_type=image.content_type,
             original_filename=image.filename,
         )
-    except StorageConfigError as e:
+    except get_storage_service().StorageConfigError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except StorageOperationError as e:
+    except get_storage_service().StorageOperationError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
     f = Foundation(
@@ -126,7 +134,7 @@ async def create_foundation_from_photo(
     except Exception:
         await db.rollback()
         try:
-            delete_public_asset(upload_result.public_url)
+            get_storage_service().delete_public_asset(upload_result.public_url)
         except Exception as cleanup_exc:
             logger.warning("Failed to clean up uploaded swatch image: %s", cleanup_exc)
         raise
@@ -211,10 +219,10 @@ async def delete_foundation(
 
     if f.swatch_image_url:
         try:
-            delete_public_asset(f.swatch_image_url)
-        except StorageConfigError as e:
+            get_storage_service().delete_public_asset(f.swatch_image_url)
+        except get_storage_service().StorageConfigError as e:
             raise HTTPException(status_code=500, detail=str(e))
-        except StorageOperationError as e:
+        except get_storage_service().StorageOperationError as e:
             raise HTTPException(status_code=502, detail=str(e))
 
     await db.delete(f)
