@@ -61,9 +61,49 @@ class FoundationOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DetectionPoint(BaseModel):
+    x: float
+    y: float
+
+
+class DetectedColorCheckerPatch(BaseModel):
+    patch_index: int
+    measured_rgb: list[float]
+    center: DetectionPoint
+    polygon: list[DetectionPoint]
+
+
+class ColorCheckerFiducials(BaseModel):
+    center: DetectionPoint | None = None
+    corners: list[DetectionPoint]
+
+
+class ColorCheckerDetectionResult(BaseModel):
+    score: float
+    confidence: float
+    polygon: list[DetectionPoint]
+    patches: list[DetectedColorCheckerPatch]
+    fiducials: ColorCheckerFiducials
+
+
+class SwatchDetectionResult(BaseModel):
+    polygon: list[DetectionPoint]
+    pixel_count: int
+    raw_pixel_count: int
+    sample_hex: str
+
+
+class FoundationDetectionResult(BaseModel):
+    color_checker: ColorCheckerDetectionResult | None = None
+    swatch: SwatchDetectionResult | None = None
+    color_correction_applied: bool
+    color_correction_source: str | None = None
+
+
 class FoundationAnalysisResult(BaseModel):
     L_value: float
     a_value: float
     b_value: float
     hex_color: str
     undertone: str
+    detection: FoundationDetectionResult | None = None

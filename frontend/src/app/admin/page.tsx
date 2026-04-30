@@ -96,9 +96,8 @@ export default function AdminPage() {
         <AdminPhotoAnalysisForm
           photoPreview={photoWorkflow.photoPreview}
           photoMeta={photoWorkflow.photoMeta}
-          checkerPatches={photoWorkflow.checkerPatches}
-          selectingPatch={photoWorkflow.selectingPatch}
           analysisResult={photoWorkflow.analysisResult}
+          photoDetection={photoWorkflow.photoDetection}
           analyzing={photoWorkflow.analyzing}
           isSavingPhoto={photoWorkflow.isSavingPhoto}
           photoError={photoWorkflow.photoError}
@@ -107,8 +106,6 @@ export default function AdminPage() {
           onPhotoMetaFieldChange={photoWorkflow.updatePhotoMetaField}
           onPhotoUpload={photoWorkflow.handlePhotoUpload}
           onPhotoImageLoad={photoWorkflow.handlePhotoImageLoad}
-          onPhotoCanvasClick={photoWorkflow.handlePhotoCanvasClick}
-          onSelectPatch={photoWorkflow.togglePatchSelection}
           onAnalyze={() => void photoWorkflow.analyzeSwatch()}
           onSave={() => void photoWorkflow.saveFromPhoto()}
           onReset={photoWorkflow.resetPhotoState}

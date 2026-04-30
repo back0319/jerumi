@@ -1,6 +1,6 @@
 # 제루미
 
-현재 기준 버전: `v1.2.0`
+현재 기준 버전: `v1.2.1`
 
 제루미는 얼굴 사진 1장으로 대표 피부색을 추정하고, 현재 저장된 파운데이션 데이터 중에서 색이 가장 가까운 제품을 추천하는 서비스입니다.
 
@@ -12,6 +12,7 @@
 - 관리자는 `/admin`에서 파운데이션 정보를 등록, 수정, 삭제할 수 있습니다.
 - 관리자는 스와치 사진을 올려 제품 색상을 자동으로 추출하고 저장할 수 있습니다.
 - 관리자는 ROI 검증 도구로 얼굴의 어떤 영역을 분석에 사용했는지 확인할 수 있습니다.
+- 사진 안에 Calibrite ColorChecker Classic Mini가 있으면 자동으로 감지해 색 보정에 사용합니다.
 
 ## 일반 사용자 기준 사용 흐름
 
@@ -31,7 +32,19 @@
 
 이 영역들을 따로 보고, 조명 반사나 홍조처럼 흔들리기 쉬운 픽셀을 줄인 뒤 대표 피부색을 계산합니다. 그래서 단순 평균보다 결과가 덜 흔들리도록 설계되어 있습니다.
 
+컬러체커가 함께 찍힌 사진에서는 카드 외곽과 내부 24개 패치 격자를 자동으로 찾고, 측정된 패치 RGB를 표준 ColorChecker LAB 값에 맞춰 XYZ 보정 행렬을 계산합니다. 카드가 머리카락이나 옷처럼 어두운 영역과 붙어 보이는 경우에는 검은 카드 body 대신 6x4 컬러 패치 격자 자체를 찾는 fallback을 사용합니다.
+
 ## 현재 릴리스 요약
+
+### `v1.2.1`
+
+- 직접 촬영 카메라 프리뷰를 좌우 반전해 거울처럼 보이도록 수정
+- `/scan`에서 ColorChecker Classic Mini를 자동 감지하고 기존 수동 swatch 클릭 보정 흐름 제거
+- 컬러체커 외곽과 내부 24개 패치 overlay 표시 추가
+- 관리자 사진 기반 파운데이션 등록에서 컬러체커와 화장품 샘플 영역을 자동 감지
+- 화장품 샘플 색 추출에 자동 컬러체커 보정을 적용
+- 카드가 얼굴/머리카락/옷의 어두운 영역과 붙어 보이는 사진도 처리하도록 패치 격자 기반 fallback 추가
+- 컬러체커 회전/미러링 방향을 패치 색상 점수로 자동 정렬
 
 ### `v1.2.0`
 
@@ -119,7 +132,7 @@
 ├─ backend/                 # FastAPI API 서버
 │  ├─ app/main.py           # API 엔트리포인트
 │  ├─ app/routers/          # auth / analysis / foundations
-│  ├─ app/services/         # 색 분석 / 스와치 추출 / Storage
+│  ├─ app/services/         # 색 분석 / 컬러체커 감지 / 스와치 추출 / Storage
 │  ├─ app/utils/seed.py     # 샘플 이미지 기반 DB 시드
 │  ├─ tests/                # 회귀 테스트
 │  └─ shade_images/         # 로컬 시드용 이미지
@@ -258,6 +271,15 @@ python -m app.utils.seed
 4. `/scan`에서 분석 성공
 5. `/admin` 로그인 및 foundation CRUD
 6. `/api/foundations/from-photo` 업로드 후 `swatch_image_url` 생성 확인
+7. Vercel 프로젝트가 `framework: services`이고 최신 production deployment가 `READY`인지 확인
+8. Supabase 프로젝트가 `ACTIVE_HEALTHY`인지 확인
+9. Supabase advisors에서 보안 ERROR가 없는지 확인
+
+현재 운영 점검 메모:
+
+- 이번 `v1.2.1` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
+- Supabase Storage 업로드/삭제는 backend에서만 `SUPABASE_SERVICE_ROLE_KEY`를 사용합니다. 이 값은 절대 브라우저로 노출하면 안 됩니다.
+- Supabase advisor가 `public.foundations`의 RLS 비활성화를 보안 ERROR로 표시할 수 있습니다. 앱은 backend API를 통해 접근하지만, Supabase public schema 노출 정책상 운영에서는 RLS 활성화와 정책 설정을 별도 작업으로 정리하는 것이 안전합니다.
 7. foundation 삭제 시 Storage object 정리 확인
 
 ## 참고 문서

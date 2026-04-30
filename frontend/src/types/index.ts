@@ -55,10 +55,50 @@ export interface ColorCheckerPatch {
   measured_rgb: [number, number, number];
 }
 
+export interface DetectionPoint {
+  x: number;
+  y: number;
+}
+
+export interface DetectedColorCheckerPatch {
+  patch_index: number;
+  measured_rgb: [number, number, number];
+  center: DetectionPoint;
+  polygon: DetectionPoint[];
+}
+
+export interface ColorCheckerFiducials {
+  center: DetectionPoint | null;
+  corners: DetectionPoint[];
+}
+
+export interface ColorCheckerDetectionResult {
+  score: number;
+  confidence: number;
+  polygon: DetectionPoint[];
+  patches: DetectedColorCheckerPatch[];
+  fiducials: ColorCheckerFiducials;
+}
+
+export interface SwatchDetectionResult {
+  polygon: DetectionPoint[];
+  pixel_count: number;
+  raw_pixel_count: number;
+  sample_hex: string;
+}
+
+export interface FoundationDetectionResult {
+  color_checker: ColorCheckerDetectionResult | null;
+  swatch: SwatchDetectionResult | null;
+  color_correction_applied: boolean;
+  color_correction_source: string | null;
+}
+
 export interface FoundationAnalysisResult {
   L_value: number;
   a_value: number;
   b_value: number;
   hex_color: string;
   undertone: string;
+  detection: FoundationDetectionResult | null;
 }

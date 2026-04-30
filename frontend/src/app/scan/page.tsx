@@ -13,9 +13,10 @@ import {
 } from "@/lib/facemesh";
 import {
   COLORCHECKER_REFERENCE,
+  buildCheckerPatchesFromDetection,
+  detectColorCheckerFromCanvas,
   labToHex,
-  type MeasuredPatch,
-  buildCheckerPatches,
+  type ColorCheckerDetection,
 } from "@/lib/colorChecker";
 import {
   averagePixelsToHex,
@@ -36,6 +37,7 @@ type Step = "upload" | "camera" | "checker" | "analyzing" | "done";
 type CheckerImageStatus = "idle" | "loading" | "ready" | "error";
 type AnalysisOverlay = SkinOverlayBase & {
   sampleHex: string;
+  colorChecker: ColorCheckerDetection | null;
 };
 
 function getDeltaEBadgeClass(deltaE: number): string {
@@ -59,8 +61,8 @@ export default function ScanPage() {
   const [skinExtraction, setSkinExtraction] = useState<SkinExtraction | null>(
     null,
   );
-  const [checkerPatches, setCheckerPatches] = useState<MeasuredPatch[]>([]);
-  const [selectingPatch, setSelectingPatch] = useState<number | null>(null);
+  const [detectedChecker, setDetectedChecker] =
+    useState<ColorCheckerDetection | null>(null);
   const [checkerImageStatus, setCheckerImageStatus] =
     useState<CheckerImageStatus>("idle");
   const [checkerImageError, setCheckerImageError] = useState<string | null>(
@@ -75,11 +77,6 @@ export default function ScanPage() {
   const detectionCompletedRef = useRef(false);
   const [analysisOverlay, setAnalysisOverlay] =
     useState<AnalysisOverlay | null>(null);
-  const selectedReferencePatch =
-    selectingPatch !== null ? COLORCHECKER_REFERENCE[selectingPatch] : null;
-  const selectedReferenceHex = selectedReferencePatch
-    ? labToHex(selectedReferencePatch.lab)
-    : null;
   const visibleRecommendations = result
     ? showAllRecommendations
       ? result.recommendations
@@ -164,6 +161,65 @@ export default function ScanPage() {
       );
     }
 
+    if (overlay.colorChecker) {
+      const checker = overlay.colorChecker;
+
+      ctx.lineWidth = Math.max(1.5, previewCanvas.width / 900);
+      ctx.strokeStyle = "#7c3aed";
+      ctx.fillStyle = "rgba(124, 58, 237, 0.12)";
+      const checkerPolygon = checker.polygon;
+      ctx.beginPath();
+      ctx.moveTo(checkerPolygon[0].x, checkerPolygon[0].y);
+      for (const point of checkerPolygon.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.lineWidth = Math.max(1, previewCanvas.width / 1200);
+      ctx.strokeStyle = "rgba(124, 58, 237, 0.78)";
+      for (const patch of checker.patches) {
+        if (patch.polygon.length === 0) continue;
+        ctx.beginPath();
+        ctx.moveTo(patch.polygon[0].x, patch.polygon[0].y);
+        for (const point of patch.polygon.slice(1)) {
+          ctx.lineTo(point.x, point.y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      const labelX =
+        checkerPolygon.reduce((sum, point) => sum + point.x, 0) /
+        checkerPolygon.length;
+      const labelY =
+        checkerPolygon.reduce((sum, point) => sum + point.y, 0) /
+        checkerPolygon.length;
+      ctx.font = `${Math.max(12, previewCanvas.width / 72)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(124, 58, 237, 0.88)";
+      ctx.fillText("ColorChecker", labelX, labelY);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#7c3aed";
+      ctx.lineWidth = Math.max(2, previewCanvas.width / 720);
+      const fiducialRadius = Math.max(4, previewCanvas.width / 180);
+      if (checker.fiducials.center) {
+        ctx.beginPath();
+        ctx.arc(
+          checker.fiducials.center.x,
+          checker.fiducials.center.y,
+          fiducialRadius,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
     ctx.restore();
   }, []);
 
@@ -183,6 +239,7 @@ export default function ScanPage() {
       clearDetectionTimeout();
       setSkinExtraction(extractedSkin);
       setAnalysisOverlay(overlay);
+      setDetectedChecker(overlay.colorChecker);
       redrawPreviewCanvas(overlay);
       setError(nextError);
       setStep("checker");
@@ -203,6 +260,7 @@ export default function ScanPage() {
       setResult(null);
       setSkinExtraction(null);
       setAnalysisOverlay(null);
+      setDetectedChecker(null);
       const url = URL.createObjectURL(file);
       uploadedObjectUrlRef.current = url;
       setImageUrl(url);
@@ -233,6 +291,7 @@ export default function ScanPage() {
       setResult(null);
       setSkinExtraction(null);
       setAnalysisOverlay(null);
+      setDetectedChecker(null);
       setImageUrl(dataUrl);
       setStep("upload");
     },
@@ -313,6 +372,7 @@ export default function ScanPage() {
           mode: "fallback",
           pixelCount: pixels.length,
           sampleHex: averagePixelsToHex(pixels),
+          colorChecker: detectColorCheckerFromCanvas(canvas),
           regionPixelCounts: {},
           polygons: [
             {
@@ -405,6 +465,7 @@ export default function ScanPage() {
             mode: "facemesh",
             pixelCount: pixels.length,
             sampleHex: averagePixelsToHex(pixels),
+            colorChecker: detectColorCheckerFromCanvas(canvas),
             polygons,
             regionPixelCounts: getSkinRegionPixelCounts(skinRegions),
           },
@@ -421,57 +482,6 @@ export default function ScanPage() {
     }
   };
 
-  const handleCanvasClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (selectingPatch === null) return;
-      const canvas = processingCanvasRef.current;
-      const previewCanvas = previewCanvasRef.current;
-      if (!canvas || !previewCanvas) return;
-      const rect = previewCanvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      const x = Math.round((e.clientX - rect.left) * scaleX);
-      const y = Math.round((e.clientY - rect.top) * scaleY);
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const size = 5;
-      const data = ctx.getImageData(
-        Math.max(0, x - size),
-        Math.max(0, y - size),
-        size * 2,
-        size * 2,
-      );
-      let rSum = 0,
-        gSum = 0,
-        bSum = 0,
-        count = 0;
-      for (let i = 0; i < data.data.length; i += 4) {
-        rSum += data.data[i];
-        gSum += data.data[i + 1];
-        bSum += data.data[i + 2];
-        count++;
-      }
-
-      const measured: MeasuredPatch = {
-        patchIndex: selectingPatch,
-        measuredRgb: [
-          Math.round(rSum / count),
-          Math.round(gSum / count),
-          Math.round(bSum / count),
-        ],
-      };
-
-      setCheckerPatches((prev) => {
-        const filtered = prev.filter((p) => p.patchIndex !== selectingPatch);
-        return [...filtered, measured];
-      });
-      setSelectingPatch(null);
-    },
-    [selectingPatch],
-  );
-
   const handleAnalyze = async () => {
     if (!skinExtraction) return;
     setStep("analyzing");
@@ -479,8 +489,7 @@ export default function ScanPage() {
     setShowAllRecommendations(false);
 
     try {
-      const patches =
-        checkerPatches.length >= 3 ? buildCheckerPatches(checkerPatches) : null;
+      const patches = buildCheckerPatchesFromDetection(detectedChecker);
 
       const sampledSkinRegions = skinExtraction.skinRegions
         ? downsampleSkinRegions(
@@ -516,8 +525,7 @@ export default function ScanPage() {
     setImageUrl(null);
     setSkinExtraction(null);
     setAnalysisOverlay(null);
-    setCheckerPatches([]);
-    setSelectingPatch(null);
+    setDetectedChecker(null);
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
     setResult(null);
@@ -531,8 +539,7 @@ export default function ScanPage() {
     setImageUrl(null);
     setSkinExtraction(null);
     setAnalysisOverlay(null);
-    setCheckerPatches([]);
-    setSelectingPatch(null);
+    setDetectedChecker(null);
     setResult(null);
     setError(null);
     setCheckerImageStatus("idle");
@@ -543,8 +550,7 @@ export default function ScanPage() {
   useApiPrewarm("/analysis-ready");
 
   useEffect(() => {
-    setCheckerPatches([]);
-    setSelectingPatch(null);
+    setDetectedChecker(null);
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
     setSkinExtraction(null);
@@ -672,26 +678,25 @@ export default function ScanPage() {
         </>
       )}
 
-      {/* Step 2: Color Checker Calibration */}
+      {/* Step 2: Detection review */}
       {step === "checker" && (
         <div className="rounded-xl bg-white p-4 shadow-sm sm:p-5 lg:p-6">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-lg font-semibold">
-                컬러체커 보정 (선택사항)
+                자동 감지 영역 확인
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                추출된 피부 영역을 확인한 뒤, 패치를 3개 이상 선택하면 색
-                보정이 적용됩니다. 먼저 swatch를 고른 뒤 사진 속 같은 칸을
-                클릭하세요.
+                사진에서 피부 영역과 컬러체커를 자동으로 찾았습니다. 보라색
+                박스가 컬러체커 영역이고, 감지되면 색 보정이 자동 적용됩니다.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center text-xs sm:w-fit">
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
-                  {checkerPatches.length}
+                  {detectedChecker ? detectedChecker.patches.length : "미검출"}
                 </p>
-                <p className="text-gray-500">패치</p>
+                <p className="text-gray-500">컬러체커</p>
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
@@ -701,7 +706,7 @@ export default function ScanPage() {
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
-                  {checkerPatches.length >= 3 ? "ON" : "OFF"}
+                  {detectedChecker ? "ON" : "OFF"}
                 </p>
                 <p className="text-gray-500">보정</p>
               </div>
@@ -709,7 +714,6 @@ export default function ScanPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
-            {/* Canvas for clicking */}
             <div className="space-y-3">
               <div className="relative inline-block max-w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -723,8 +727,7 @@ export default function ScanPage() {
                 />
                 <canvas
                   ref={previewCanvasRef}
-                  className="absolute inset-0 h-full w-full rounded-xl cursor-crosshair"
-                  onClick={handleCanvasClick}
+                  className="pointer-events-none absolute inset-0 h-full w-full rounded-xl"
                 />
               </div>
               <canvas ref={processingCanvasRef} className="hidden" />
@@ -735,33 +738,12 @@ export default function ScanPage() {
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
                     {checkerImageStatus === "loading"
-                      ? "보정용 이미지를 준비하는 중입니다."
+                      ? "감지 결과 이미지를 준비하는 중입니다."
                       : checkerImageStatus === "error"
                         ? checkerImageError
-                        : "사진에서 같은 패치를 클릭하세요."}
+                        : "오버레이로 감지 영역을 확인하세요."}
                   </p>
                 </div>
-                {selectedReferencePatch && selectedReferenceHex && (
-                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-left">
-                    <p className="text-[11px] font-semibold text-rose-700">
-                      선택 중
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span
-                        className="h-6 w-6 rounded border border-black/10"
-                        style={{ backgroundColor: selectedReferenceHex }}
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-rose-700">
-                          {selectedReferencePatch.name}
-                        </p>
-                        <p className="text-[11px] font-mono text-rose-600">
-                          {selectedReferenceHex}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
                 {analysisOverlay && (
                   <>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
@@ -788,81 +770,101 @@ export default function ScanPage() {
                         </span>
                       </div>
                     </div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
+                      <p className="text-[11px] font-semibold text-gray-700">
+                        컬러체커
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {detectedChecker
+                          ? `자동 감지됨 · score ${detectedChecker.score}`
+                          : "감지되지 않아 보정 없이 진행합니다."}
+                      </p>
+                    </div>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Checker patch selection */}
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">
-                    참조 패치
+                    컬러체커 자동 보정
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
-                    swatch를 보고 고른 뒤 사진에서 같은 칸을 클릭하세요.
+                    표준 24패치 순서로 자동 매칭한 측정값입니다.
                   </p>
                 </div>
                 <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600">
-                  24 patches
+                  {detectedChecker ? "auto" : "not found"}
                 </span>
               </div>
-              <div className="max-h-[28vh] overflow-y-auto pr-1 sm:max-h-[30vh] lg:max-h-[48vh]">
-                <div className="grid grid-cols-6 gap-2 sm:grid-cols-6 lg:grid-cols-4">
-                  {COLORCHECKER_REFERENCE.map((patch, idx) => {
-                    const measured = checkerPatches.find(
-                      (p) => p.patchIndex === idx,
-                    );
-                    const referenceHex = labToHex(patch.lab);
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setSelectingPatch(idx)}
-                        title={`${patch.name} ${referenceHex}`}
-                        className={`relative rounded-lg border p-1.5 text-xs transition ${
-                          selectingPatch === idx
-                            ? "border-rose-500 bg-rose-50"
-                            : measured
-                              ? "border-green-500 bg-green-50"
-                              : "border-gray-200 hover:border-gray-400"
-                        }`}
-                      >
-                        <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[10px] font-semibold text-gray-500">
-                          {idx + 1}
-                        </span>
-                        <div
-                          className="aspect-square rounded-md border border-black/10"
-                          style={{ backgroundColor: referenceHex }}
-                        />
-                        {measured ? (
-                          <div className="mt-1 flex items-center justify-center gap-1">
-                            <span className="text-[10px] font-medium text-green-700">
-                              선택됨
+
+              {detectedChecker ? (
+                <>
+                  <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-white px-3 py-2">
+                      <p className="text-[11px] font-semibold text-gray-700">
+                        신뢰도
+                      </p>
+                      <p className="mt-1 text-gray-600">
+                        {Math.round(detectedChecker.confidence * 100)}%
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-2">
+                      <p className="text-[11px] font-semibold text-gray-700">
+                        패치
+                      </p>
+                      <p className="mt-1 text-gray-600">
+                        {detectedChecker.patches.length}/24
+                      </p>
+                    </div>
+                  </div>
+                  <div className="max-h-[30vh] overflow-y-auto pr-1 lg:max-h-[48vh]">
+                    <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-6 lg:grid-cols-4">
+                      {COLORCHECKER_REFERENCE.map((patch, idx) => {
+                        const measured = detectedChecker.patches.find(
+                          (item) => item.patchIndex === idx,
+                        );
+                        const measuredRgb = measured?.measuredRgb ?? [0, 0, 0];
+                        return (
+                          <div
+                            key={idx}
+                            title={patch.name}
+                            className="relative rounded-lg border border-gray-200 bg-white p-1.5"
+                          >
+                            <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[10px] font-semibold text-gray-500">
+                              {idx + 1}
                             </span>
-                            <span
-                              className="h-3.5 w-3.5 rounded border border-black/10"
+                            <div
+                              className="aspect-square rounded-md border border-black/10"
                               style={{
-                                backgroundColor: `rgb(${measured.measuredRgb.join(",")})`,
+                                backgroundColor: `rgb(${measuredRgb.join(",")})`,
                               }}
                             />
+                            <div
+                              className="mt-1 h-1.5 rounded-full border border-black/10"
+                              style={{ backgroundColor: labToHex(patch.lab) }}
+                            />
                           </div>
-                        ) : (
-                          <div className="mt-1 hidden text-center text-[10px] text-gray-400 lg:block">
-                            {patch.name}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700">
+                  컬러체커를 자동으로 찾지 못했습니다. 얼굴과 컬러체커가 모두
+                  보이는 사진으로 다시 촬영하면 색 보정이 적용됩니다.
                 </div>
-              </div>
+              )}
+
               <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
                 <div className="rounded-lg bg-white px-3 py-2">
-                  숫자는 표준 ColorChecker 순서입니다.
+                  큰 보라색 박스는 카드 영역입니다.
                 </div>
                 <div className="rounded-lg bg-white px-3 py-2">
-                  선택된 패치는 초록 상태로 유지됩니다.
+                  작은 칸은 자동 샘플링 지점입니다.
                 </div>
               </div>
             </div>
@@ -883,8 +885,8 @@ export default function ScanPage() {
                   : "bg-gray-200 text-gray-500 cursor-not-allowed"
               }`}
             >
-              {checkerPatches.length >= 3
-                ? `보정 적용 후 분석 (${checkerPatches.length}개 패치)`
+              {detectedChecker
+                ? `보정 적용 후 분석 (${detectedChecker.patches.length}개 패치)`
                 : "보정 없이 분석"}
             </button>
             <div className="flex items-center gap-4 text-sm">

@@ -10,12 +10,19 @@ smaller. The workflow is:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import BytesIO
 
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.schemas.analysis import ColorCheckerPatch
+from app.services.color_checker_detection import (
+    ColorCheckerDetection,
+    DetectionPoint,
+    detect_color_checker,
+    polygon_mask,
+)
 from app.services.color_analysis import (
     build_correction_matrix,
     lab_to_hex,
@@ -30,6 +37,25 @@ except AttributeError:  # Pillow < 9.1
     _RESAMPLING = Image
 
 _MASK_MAX_DIMENSION = 384
+
+
+@dataclass(frozen=True)
+class SwatchExtraction:
+    pixels_rgb: np.ndarray
+    polygon: list[DetectionPoint] | None
+    raw_pixel_count: int
+
+
+@dataclass(frozen=True)
+class _MaskComponent:
+    mask: np.ndarray
+    area: int
+    min_x: int
+    min_y: int
+    max_x: int
+    max_y: int
+    fill_ratio: float
+    touches_border: bool
 
 
 def _rgb_image_to_lab(image_rgb: np.ndarray) -> np.ndarray:
@@ -83,10 +109,17 @@ def _refine_mask(mask: np.ndarray) -> np.ndarray:
 
 
 def _largest_component_mask(mask: np.ndarray) -> np.ndarray | None:
+    components = _component_masks(mask)
+    if not components:
+        return None
+
+    return max(components, key=lambda component: component.area).mask
+
+
+def _component_masks(mask: np.ndarray) -> list[_MaskComponent]:
     height, width = mask.shape
     visited = np.zeros_like(mask, dtype=bool)
-    best_component: np.ndarray | None = None
-    best_area = 0
+    components: list[_MaskComponent] = []
 
     for start_y, start_x in np.argwhere(mask):
         if visited[start_y, start_x]:
@@ -107,17 +140,36 @@ def _largest_component_mask(mask: np.ndarray) -> np.ndarray | None:
                     visited[next_y, next_x] = True
                     stack.append((next_y, next_x))
 
-        area = len(component_pixels)
-        if area <= best_area:
-            continue
-
         component_mask = np.zeros_like(mask, dtype=bool)
         ys, xs = zip(*component_pixels)
-        component_mask[np.array(ys), np.array(xs)] = True
-        best_component = component_mask
-        best_area = area
+        ys_array = np.array(ys)
+        xs_array = np.array(xs)
+        component_mask[ys_array, xs_array] = True
+        min_y = int(np.min(ys_array))
+        max_y = int(np.max(ys_array))
+        min_x = int(np.min(xs_array))
+        max_x = int(np.max(xs_array))
+        bbox_area = max(1, (max_x - min_x + 1) * (max_y - min_y + 1))
+        touches_border = (
+            min_x <= 2
+            or min_y <= 2
+            or max_x >= width - 3
+            or max_y >= height - 3
+        )
+        components.append(
+            _MaskComponent(
+                mask=component_mask,
+                area=len(component_pixels),
+                min_x=min_x,
+                min_y=min_y,
+                max_x=max_x,
+                max_y=max_y,
+                fill_ratio=len(component_pixels) / bbox_area,
+                touches_border=touches_border,
+            )
+        )
 
-    return best_component
+    return components
 
 
 def _decode_image(image_bytes: bytes) -> np.ndarray:
@@ -129,7 +181,67 @@ def _decode_image(image_bytes: bytes) -> np.ndarray:
     return np.asarray(image, dtype=np.uint8)
 
 
-def _downscaled_component_mask(image_rgb: np.ndarray) -> np.ndarray:
+def _border_mask(height: int, width: int) -> np.ndarray:
+    margin = max(8, int(round(min(height, width) * 0.06)))
+    mask = np.zeros((height, width), dtype=bool)
+    mask[:margin, :] = True
+    mask[-margin:, :] = True
+    mask[:, :margin] = True
+    mask[:, -margin:] = True
+    return mask
+
+
+def _background_relative_component_mask(
+    working_rgb: np.ndarray,
+    exclude_mask: np.ndarray,
+) -> np.ndarray | None:
+    height, width = working_rgb.shape[:2]
+    working_lab = _rgb_image_to_lab(working_rgb)
+    bg_candidates = _border_mask(height, width) & ~exclude_mask
+
+    if np.sum(bg_candidates) < 20:
+        bg_candidates = ~exclude_mask
+
+    if np.sum(bg_candidates) < 20:
+        return None
+
+    background_lab = np.median(working_lab[bg_candidates], axis=0)
+    distance_from_background = np.linalg.norm(working_lab - background_lab, axis=2)
+
+    mask = (distance_from_background > 7.0) & ~exclude_mask
+    mask[:2, :] = False
+    mask[-2:, :] = False
+    mask[:, :2] = False
+    mask[:, -2:] = False
+    mask = _binary_dilation(_binary_erosion(mask, iterations=1), iterations=1)
+
+    min_area = max(40, int(round(height * width * 0.001)))
+    max_area = int(round(height * width * 0.45))
+    candidates = [
+        component
+        for component in _component_masks(mask)
+        if component.area >= min_area
+        and component.area <= max_area
+        and not component.touches_border
+        and component.fill_ratio >= 0.25
+        and (component.max_x - component.min_x + 1) >= 8
+        and (component.max_y - component.min_y + 1) >= 8
+    ]
+
+    if not candidates:
+        return None
+
+    best = max(
+        candidates,
+        key=lambda component: component.area * min(component.fill_ratio, 1.0),
+    )
+    return best.mask
+
+
+def _downscaled_component_mask(
+    image_rgb: np.ndarray,
+    exclude_polygon: list[DetectionPoint] | None = None,
+) -> np.ndarray:
     original_height, original_width = image_rgb.shape[:2]
     longest_side = max(original_height, original_width)
 
@@ -145,8 +257,25 @@ def _downscaled_component_mask(image_rgb: np.ndarray) -> np.ndarray:
         )
         working_rgb = np.asarray(working_image, dtype=np.uint8)
 
+    exclude_mask = np.zeros(working_rgb.shape[:2], dtype=bool)
+    if exclude_polygon:
+        exclude_mask = polygon_mask(
+            (working_rgb.shape[1], working_rgb.shape[0]),
+            exclude_polygon,
+            scale=working_rgb.shape[1] / original_width,
+            padding=2,
+        )
+
+    relative_component_mask = _background_relative_component_mask(
+        working_rgb,
+        exclude_mask,
+    )
+    if relative_component_mask is not None:
+        return relative_component_mask
+
     working_lab = _rgb_image_to_lab(working_rgb)
     working_mask = _refine_mask(_build_non_white_mask(working_lab))
+    working_mask[exclude_mask] = False
 
     component_mask = _largest_component_mask(working_mask)
     if component_mask is None:
@@ -155,10 +284,60 @@ def _downscaled_component_mask(image_rgb: np.ndarray) -> np.ndarray:
     return component_mask
 
 
-def _extract_swatch_pixels(image_rgb: np.ndarray) -> np.ndarray:
-    small_component_mask = _downscaled_component_mask(image_rgb)
+def _mask_bounding_polygon(mask: np.ndarray) -> list[DetectionPoint] | None:
+    coordinates = np.argwhere(mask)
+    if len(coordinates) == 0:
+        return None
+
+    min_y, min_x = np.min(coordinates, axis=0)
+    max_y, max_x = np.max(coordinates, axis=0)
+    return [
+        DetectionPoint(float(min_x), float(min_y)),
+        DetectionPoint(float(max_x), float(min_y)),
+        DetectionPoint(float(max_x), float(max_y)),
+        DetectionPoint(float(min_x), float(max_y)),
+    ]
+
+
+def _inset_axis_aligned_polygon(
+    polygon: list[DetectionPoint] | None,
+    *,
+    min_pixels: float = 2.0,
+    ratio: float = 0.012,
+) -> list[DetectionPoint] | None:
+    if polygon is None or len(polygon) != 4:
+        return polygon
+
+    xs = [point.x for point in polygon]
+    ys = [point.y for point in polygon]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    inset = max(min_pixels, min(max_x - min_x, max_y - min_y) * ratio)
+    if min_x + inset >= max_x - inset or min_y + inset >= max_y - inset:
+        return polygon
+
+    return [
+        DetectionPoint(float(min_x + inset), float(min_y + inset)),
+        DetectionPoint(float(max_x - inset), float(min_y + inset)),
+        DetectionPoint(float(max_x - inset), float(max_y - inset)),
+        DetectionPoint(float(min_x + inset), float(max_y - inset)),
+    ]
+
+
+def _extract_swatch(
+    image_rgb: np.ndarray,
+    checker_detection: ColorCheckerDetection | None = None,
+) -> SwatchExtraction:
+    small_component_mask = _downscaled_component_mask(
+        image_rgb,
+        checker_detection.polygon if checker_detection else None,
+    )
     if not np.any(small_component_mask):
-        return np.empty((0, 3), dtype=np.uint8)
+        return SwatchExtraction(
+            pixels_rgb=np.empty((0, 3), dtype=np.uint8),
+            polygon=None,
+            raw_pixel_count=0,
+        )
 
     original_height, original_width = image_rgb.shape[:2]
     mask_image = Image.fromarray((small_component_mask.astype(np.uint8) * 255))
@@ -169,11 +348,27 @@ def _extract_swatch_pixels(image_rgb: np.ndarray) -> np.ndarray:
 
     candidate_pixels = image_rgb[full_mask]
     if len(candidate_pixels) == 0:
-        return np.empty((0, 3), dtype=np.uint8)
+        return SwatchExtraction(
+            pixels_rgb=np.empty((0, 3), dtype=np.uint8),
+            polygon=None,
+            raw_pixel_count=0,
+        )
 
     candidate_lab = _rgb_pixels_to_lab_array(candidate_pixels)
-    filtered_pixels = candidate_pixels[_build_non_white_mask(candidate_lab)]
-    return filtered_pixels.astype(np.uint8)
+    color_pixel_mask = _build_non_white_mask(candidate_lab)
+    filtered_pixels = candidate_pixels[color_pixel_mask]
+    filtered_mask = np.zeros_like(full_mask, dtype=bool)
+    full_mask_y, full_mask_x = np.where(full_mask)
+    filtered_mask[full_mask_y[color_pixel_mask], full_mask_x[color_pixel_mask]] = True
+    display_mask = _binary_erosion(filtered_mask, iterations=1)
+    if np.sum(display_mask) < 50:
+        display_mask = filtered_mask
+
+    return SwatchExtraction(
+        pixels_rgb=filtered_pixels.astype(np.uint8),
+        polygon=_inset_axis_aligned_polygon(_mask_bounding_polygon(display_mask)),
+        raw_pixel_count=int(len(candidate_pixels)),
+    )
 
 
 def _classify_undertone(a_star: float, b_star: float) -> str:
@@ -191,7 +386,9 @@ def extract_swatch_from_image(
 ) -> dict:
     """Extract foundation color from a photo of a swatch on white paper."""
     image_rgb = _decode_image(image_bytes)
-    swatch_pixels_rgb = _extract_swatch_pixels(image_rgb)
+    checker_detection = detect_color_checker(image_rgb)
+    swatch = _extract_swatch(image_rgb, checker_detection)
+    swatch_pixels_rgb = swatch.pixels_rgb
 
     if len(swatch_pixels_rgb) < 50:
         raise ValueError(
@@ -206,8 +403,17 @@ def extract_swatch_from_image(
         swatch_pixels_rgb = swatch_pixels_rgb[indices]
 
     correction = None
+    correction_patches = None
+    correction_source = None
     if checker_patches and len(checker_patches) >= 3:
-        correction = build_correction_matrix(checker_patches)
+        correction_patches = checker_patches
+        correction_source = "manual"
+    elif checker_detection and len(checker_detection.checker_patches) >= 3:
+        correction_patches = checker_detection.checker_patches
+        correction_source = "auto"
+
+    if correction_patches:
+        correction = build_correction_matrix(correction_patches)
 
     lab_array = rgb_pixels_to_lab(swatch_pixels_rgb.tolist(), correction)
     mean_lab = trimmed_mean_lab(lab_array)
@@ -223,4 +429,21 @@ def extract_swatch_from_image(
         "b_value": round(b_value, 2),
         "hex_color": lab_to_hex(mean_lab),
         "undertone": _classify_undertone(a_value, b_value),
+        "detection": {
+            "color_checker": (
+                checker_detection.to_dict() if checker_detection is not None else None
+            ),
+            "swatch": (
+                {
+                    "polygon": [point.to_dict() for point in swatch.polygon],
+                    "pixel_count": int(len(swatch_pixels_rgb)),
+                    "raw_pixel_count": swatch.raw_pixel_count,
+                    "sample_hex": lab_to_hex(mean_lab),
+                }
+                if swatch.polygon is not None
+                else None
+            ),
+            "color_correction_applied": correction is not None,
+            "color_correction_source": correction_source,
+        },
     }

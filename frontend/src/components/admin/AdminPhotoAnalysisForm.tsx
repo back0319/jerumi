@@ -1,15 +1,16 @@
 import type { RefObject } from "react";
 
-import { COLORCHECKER_REFERENCE, type MeasuredPatch } from "@/lib/colorChecker";
-import type { FoundationAnalysisResult } from "@/types";
+import type {
+  FoundationAnalysisResult,
+  FoundationDetectionResult,
+} from "@/types";
 import type { PhotoMetaValues } from "@/components/admin/types";
 
 type AdminPhotoAnalysisFormProps = {
   photoPreview: string | null;
   photoMeta: PhotoMetaValues;
-  checkerPatches: MeasuredPatch[];
-  selectingPatch: number | null;
   analysisResult: FoundationAnalysisResult | null;
+  photoDetection: FoundationDetectionResult | null;
   analyzing: boolean;
   isSavingPhoto: boolean;
   photoError: string | null;
@@ -21,8 +22,6 @@ type AdminPhotoAnalysisFormProps = {
   ) => void;
   onPhotoUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onPhotoImageLoad: () => void;
-  onPhotoCanvasClick: (event: React.MouseEvent<HTMLCanvasElement>) => void;
-  onSelectPatch: (patchIndex: number) => void;
   onAnalyze: () => void;
   onSave: () => void;
   onReset: () => void;
@@ -32,9 +31,8 @@ type AdminPhotoAnalysisFormProps = {
 export function AdminPhotoAnalysisForm({
   photoPreview,
   photoMeta,
-  checkerPatches,
-  selectingPatch,
   analysisResult,
+  photoDetection,
   analyzing,
   isSavingPhoto,
   photoError,
@@ -43,8 +41,6 @@ export function AdminPhotoAnalysisForm({
   onPhotoMetaFieldChange,
   onPhotoUpload,
   onPhotoImageLoad,
-  onPhotoCanvasClick,
-  onSelectPatch,
   onAnalyze,
   onSave,
   onReset,
@@ -119,9 +115,7 @@ export function AdminPhotoAnalysisForm({
         <div className="mb-4 grid gap-4 lg:grid-cols-2">
           <div>
             <p className="mb-2 text-sm font-medium text-gray-700">
-              {selectingPatch !== null
-                ? `"${COLORCHECKER_REFERENCE[selectingPatch].name}" 패치를 사진에서 클릭하세요`
-                : "필요하면 참조 패치를 고른 뒤 사진에서 같은 칸을 클릭하세요"}
+              사진 미리보기
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -133,9 +127,8 @@ export function AdminPhotoAnalysisForm({
             />
             <canvas
               ref={photoCanvasRef}
-              className="max-w-full cursor-crosshair rounded border"
+              className="max-w-full rounded border"
               style={{ maxHeight: "320px" }}
-              onClick={onPhotoCanvasClick}
             />
             <button
               onClick={onReset}
@@ -147,51 +140,54 @@ export function AdminPhotoAnalysisForm({
 
           <div>
             <p className="mb-2 text-sm font-medium text-gray-700">
-              참조 패치 ({checkerPatches.length}/24)
+              자동 감지 결과
             </p>
-            <div className="grid max-h-64 grid-cols-6 gap-1.5 overflow-y-auto">
-              {COLORCHECKER_REFERENCE.map((patch, index) => {
-                const measured = checkerPatches.find(
-                  (item) => item.patchIndex === index,
-                );
-
-                return (
-                  <button
-                    key={index}
-                    onClick={() => onSelectPatch(index)}
-                    className={`rounded border p-1.5 text-xs transition ${
-                      selectingPatch === index
-                        ? "border-indigo-500 bg-indigo-50"
-                        : measured
-                          ? "border-green-500 bg-green-50"
-                          : "border-gray-200 hover:border-gray-400"
-                    }`}
-                    title={patch.name}
-                  >
-                    <div className="truncate text-center text-[10px]">
-                      {patch.name}
-                    </div>
-                    {measured && (
-                      <div
-                        className="mx-auto mt-0.5 h-5 w-5 rounded"
-                        style={{
-                          backgroundColor: `rgb(${measured.measuredRgb.join(",")})`,
-                        }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {checkerPatches.length > 0 && checkerPatches.length < 3 && (
-              <p className="mt-2 text-xs text-amber-600">
-                색 보정을 적용하려면 패치를 3개 이상 선택하세요.
-              </p>
+            {!analysisResult && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+                색상 추출을 실행하면 컬러체커와 화장품 영역을 자동으로 표시합니다.
+              </div>
             )}
-            {checkerPatches.length >= 3 && (
-              <p className="mt-2 text-xs text-green-600">
-                패치 {checkerPatches.length}개 선택됨. 색 보정이 적용됩니다.
-              </p>
+            {analysisResult && (
+              <div className="space-y-3">
+                <div
+                  className={`rounded-lg border px-4 py-3 text-sm ${
+                    photoDetection?.color_checker
+                      ? "border-violet-200 bg-violet-50 text-violet-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <p className="font-semibold">컬러체커</p>
+                  <p className="mt-1">
+                    {photoDetection?.color_checker
+                      ? `자동 감지됨 · ${photoDetection.color_checker.patches.length}/24 패치 · 신뢰도 ${Math.round(
+                          photoDetection.color_checker.confidence * 100,
+                        )}%`
+                      : "감지되지 않아 색 보정 없이 추출했습니다."}
+                  </p>
+                </div>
+                <div
+                  className={`rounded-lg border px-4 py-3 text-sm ${
+                    photoDetection?.swatch
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <p className="font-semibold">화장품 샘플</p>
+                  <p className="mt-1">
+                    {photoDetection?.swatch
+                      ? `${photoDetection.swatch.pixel_count.toLocaleString()} 픽셀 추출 · ${photoDetection.swatch.sample_hex}`
+                      : "화장품 영역을 확인하지 못했습니다."}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500">
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    보라색은 컬러체커 영역입니다.
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    초록색은 화장품 샘플 영역입니다.
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>

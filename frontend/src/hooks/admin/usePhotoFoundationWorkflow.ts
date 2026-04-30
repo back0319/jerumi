@@ -10,16 +10,17 @@ import {
 } from "react";
 
 import { apiAuthPostFormData } from "@/lib/api";
-import {
-  buildCheckerPatches,
-  type MeasuredPatch,
-} from "@/lib/colorChecker";
 import type {
   ActiveAdminPanel,
   PhotoMetaValues,
 } from "@/components/admin/types";
 import { createDefaultPhotoMeta } from "@/components/admin/types";
-import type { Foundation, FoundationAnalysisResult } from "@/types";
+import type {
+  DetectionPoint,
+  Foundation,
+  FoundationAnalysisResult,
+  FoundationDetectionResult,
+} from "@/types";
 
 type UsePhotoFoundationWorkflowArgs = {
   token: string | null;
@@ -39,10 +40,10 @@ export function usePhotoFoundationWorkflow({
   const [photoMeta, setPhotoMeta] = useState<PhotoMetaValues>(
     createDefaultPhotoMeta,
   );
-  const [checkerPatches, setCheckerPatches] = useState<MeasuredPatch[]>([]);
-  const [selectingPatch, setSelectingPatch] = useState<number | null>(null);
   const [analysisResult, setAnalysisResult] =
     useState<FoundationAnalysisResult | null>(null);
+  const [photoDetection, setPhotoDetection] =
+    useState<FoundationDetectionResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [isSavingPhoto, setIsSavingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -59,9 +60,8 @@ export function usePhotoFoundationWorkflow({
       return null;
     });
     setPhotoMeta(createDefaultPhotoMeta());
-    setCheckerPatches([]);
-    setSelectingPatch(null);
     setAnalysisResult(null);
+    setPhotoDetection(null);
     setAnalyzing(false);
     setIsSavingPhoto(false);
     setPhotoError(null);
@@ -110,10 +110,94 @@ export function usePhotoFoundationWorkflow({
         return URL.createObjectURL(file);
       });
       setAnalysisResult(null);
-      setCheckerPatches([]);
-      setSelectingPatch(null);
+      setPhotoDetection(null);
     },
     [],
+  );
+
+  const drawPolygon = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      polygon: DetectionPoint[],
+      stroke: string,
+      fill: string,
+    ) => {
+      if (polygon.length === 0) return;
+      ctx.beginPath();
+      ctx.moveTo(polygon[0].x, polygon[0].y);
+      for (const point of polygon.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.fill();
+      ctx.stroke();
+    },
+    [],
+  );
+
+  const drawPhotoCanvas = useCallback(
+    (detection: FoundationDetectionResult | null = photoDetection) => {
+      const image = photoImgRef.current;
+      const canvas = photoCanvasRef.current;
+      if (!image || !canvas) return;
+
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0);
+
+      if (!detection) return;
+
+      ctx.save();
+      ctx.lineWidth = Math.max(1.5, canvas.width / 900);
+
+      if (detection.color_checker) {
+        drawPolygon(
+          ctx,
+          detection.color_checker.polygon,
+          "#7c3aed",
+          "rgba(124, 58, 237, 0.12)",
+        );
+        ctx.lineWidth = Math.max(1, canvas.width / 1200);
+        for (const patch of detection.color_checker.patches) {
+          drawPolygon(
+            ctx,
+            patch.polygon,
+            "rgba(124, 58, 237, 0.72)",
+            "rgba(124, 58, 237, 0.03)",
+          );
+        }
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#7c3aed";
+        ctx.lineWidth = Math.max(2, canvas.width / 720);
+        const fiducialRadius = Math.max(4, canvas.width / 180);
+        const centerPoint = detection.color_checker.fiducials.center;
+        if (centerPoint) {
+          ctx.beginPath();
+          ctx.arc(centerPoint.x, centerPoint.y, fiducialRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      if (detection.swatch) {
+        ctx.lineWidth = Math.max(1.5, canvas.width / 900);
+        drawPolygon(
+          ctx,
+          detection.swatch.polygon,
+          "#059669",
+          "rgba(16, 185, 129, 0.16)",
+        );
+      }
+
+      ctx.restore();
+    },
+    [drawPolygon, photoDetection],
   );
 
   const handlePhotoImageLoad = useCallback(() => {
@@ -126,66 +210,8 @@ export function usePhotoFoundationWorkflow({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(image, 0, 0);
-  }, []);
-
-  const handlePhotoCanvasClick = useCallback(
-    (event: React.MouseEvent<HTMLCanvasElement>) => {
-      if (selectingPatch === null) return;
-
-      const canvas = photoCanvasRef.current;
-      if (!canvas) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      const x = Math.round((event.clientX - rect.left) * scaleX);
-      const y = Math.round((event.clientY - rect.top) * scaleY);
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const size = 5;
-      const data = ctx.getImageData(
-        Math.max(0, x - size),
-        Math.max(0, y - size),
-        size * 2,
-        size * 2,
-      );
-      let redTotal = 0;
-      let greenTotal = 0;
-      let blueTotal = 0;
-      let count = 0;
-
-      for (let index = 0; index < data.data.length; index += 4) {
-        redTotal += data.data[index];
-        greenTotal += data.data[index + 1];
-        blueTotal += data.data[index + 2];
-        count++;
-      }
-
-      const measured: MeasuredPatch = {
-        patchIndex: selectingPatch,
-        measuredRgb: [
-          Math.round(redTotal / count),
-          Math.round(greenTotal / count),
-          Math.round(blueTotal / count),
-        ],
-      };
-
-      setCheckerPatches((current) => {
-        const filtered = current.filter(
-          (patch) => patch.patchIndex !== selectingPatch,
-        );
-        return [...filtered, measured];
-      });
-      setSelectingPatch(null);
-    },
-    [selectingPatch],
-  );
-
-  const togglePatchSelection = useCallback((patchIndex: number) => {
-    setSelectingPatch((current) => (current === patchIndex ? null : patchIndex));
-  }, []);
+    drawPhotoCanvas();
+  }, [drawPhotoCanvas]);
 
   const analyzeSwatch = useCallback(async () => {
     if (!photoFile || !token) return;
@@ -197,23 +223,20 @@ export function usePhotoFoundationWorkflow({
       const formData = new FormData();
       formData.append("image", photoFile);
 
-      if (checkerPatches.length >= 3) {
-        const patches = buildCheckerPatches(checkerPatches);
-        formData.append("checker_patches", JSON.stringify(patches));
-      }
-
       const result = await apiAuthPostFormData<FoundationAnalysisResult>(
         "/foundations/analyze-swatch",
         formData,
         token,
       );
       setAnalysisResult(result);
+      setPhotoDetection(result.detection ?? null);
+      drawPhotoCanvas(result.detection ?? null);
     } catch (error: any) {
       setPhotoError(error.message || "분석 중 오류가 발생했습니다.");
     } finally {
       setAnalyzing(false);
     }
-  }, [checkerPatches, photoFile, token]);
+  }, [drawPhotoCanvas, photoFile, token]);
 
   const saveFromPhoto = useCallback(async () => {
     if (!photoFile || !token || !analysisResult) return;
@@ -234,11 +257,6 @@ export function usePhotoFoundationWorkflow({
       formData.append("shade_name", photoMeta.shade_name);
       formData.append("shade_code", photoMeta.shade_code);
 
-      if (checkerPatches.length >= 3) {
-        const patches = buildCheckerPatches(checkerPatches);
-        formData.append("checker_patches", JSON.stringify(patches));
-      }
-
       const created = await apiAuthPostFormData<Foundation>(
         "/foundations/from-photo",
         formData,
@@ -253,7 +271,6 @@ export function usePhotoFoundationWorkflow({
     }
   }, [
     analysisResult,
-    checkerPatches,
     onFoundationCreated,
     photoFile,
     photoMeta,
@@ -268,9 +285,8 @@ export function usePhotoFoundationWorkflow({
   return {
     photoPreview,
     photoMeta,
-    checkerPatches,
-    selectingPatch,
     analysisResult,
+    photoDetection,
     analyzing,
     isSavingPhoto,
     photoError,
@@ -279,8 +295,6 @@ export function usePhotoFoundationWorkflow({
     updatePhotoMetaField,
     handlePhotoUpload,
     handlePhotoImageLoad,
-    handlePhotoCanvasClick,
-    togglePatchSelection,
     analyzeSwatch,
     saveFromPhoto,
     resetPhotoState,
