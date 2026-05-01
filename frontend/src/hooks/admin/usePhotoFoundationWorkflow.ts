@@ -164,14 +164,6 @@ export function usePhotoFoundationWorkflow({
           "rgba(124, 58, 237, 0.12)",
         );
         ctx.lineWidth = Math.max(1, canvas.width / 1200);
-        for (const patch of detection.color_checker.patches) {
-          drawPolygon(
-            ctx,
-            patch.polygon,
-            "rgba(124, 58, 237, 0.72)",
-            "rgba(124, 58, 237, 0.03)",
-          );
-        }
         ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = "#7c3aed";
         ctx.lineWidth = Math.max(2, canvas.width / 720);

@@ -12,10 +12,8 @@ import {
   type SkinRegionPixels,
 } from "@/lib/facemesh";
 import {
-  COLORCHECKER_REFERENCE,
   buildCheckerPatchesFromDetection,
   detectColorCheckerFromCanvas,
-  labToHex,
   type ColorCheckerDetection,
 } from "@/lib/colorChecker";
 import {
@@ -176,19 +174,6 @@ export default function ScanPage() {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-
-      ctx.lineWidth = Math.max(1, previewCanvas.width / 1200);
-      ctx.strokeStyle = "rgba(124, 58, 237, 0.78)";
-      for (const patch of checker.patches) {
-        if (patch.polygon.length === 0) continue;
-        ctx.beginPath();
-        ctx.moveTo(patch.polygon[0].x, patch.polygon[0].y);
-        for (const point of patch.polygon.slice(1)) {
-          ctx.lineTo(point.x, point.y);
-        }
-        ctx.closePath();
-        ctx.stroke();
-      }
 
       const labelX =
         checkerPolygon.reduce((sum, point) => sum + point.x, 0) /
@@ -688,15 +673,17 @@ export default function ScanPage() {
               </h2>
               <p className="mt-1 text-sm text-gray-500">
                 사진에서 피부 영역과 컬러체커를 자동으로 찾았습니다. 보라색
-                박스가 컬러체커 영역이고, 감지되면 색 보정이 자동 적용됩니다.
+                외곽선이 컬러체커 영역이고, 감지되면 색 보정이 자동 적용됩니다.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center text-xs sm:w-fit">
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
-                  {detectedChecker ? detectedChecker.patches.length : "미검출"}
+                  {detectedChecker
+                    ? `${Math.round(detectedChecker.confidence * 100)}%`
+                    : "미검출"}
                 </p>
-                <p className="text-gray-500">컬러체커</p>
+                <p className="text-gray-500">체커 신뢰도</p>
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
@@ -792,7 +779,7 @@ export default function ScanPage() {
                     컬러체커 자동 보정
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
-                    표준 24패치 순서로 자동 매칭한 측정값입니다.
+                    자동 감지 신뢰도를 기준으로 보정 적용 여부를 확인합니다.
                   </p>
                 </div>
                 <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600">
@@ -801,57 +788,25 @@ export default function ScanPage() {
               </div>
 
               {detectedChecker ? (
-                <>
-                  <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-white px-3 py-2">
-                      <p className="text-[11px] font-semibold text-gray-700">
-                        신뢰도
-                      </p>
-                      <p className="mt-1 text-gray-600">
-                        {Math.round(detectedChecker.confidence * 100)}%
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white px-3 py-2">
-                      <p className="text-[11px] font-semibold text-gray-700">
-                        패치
-                      </p>
-                      <p className="mt-1 text-gray-600">
-                        {detectedChecker.patches.length}/24
-                      </p>
-                    </div>
+                <div className="rounded-lg bg-white px-3 py-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-gray-700">신뢰도</span>
+                    <span className="font-semibold text-violet-700">
+                      {Math.round(detectedChecker.confidence * 100)}%
+                    </span>
                   </div>
-                  <div className="max-h-[30vh] overflow-y-auto pr-1 lg:max-h-[48vh]">
-                    <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-6 lg:grid-cols-4">
-                      {COLORCHECKER_REFERENCE.map((patch, idx) => {
-                        const measured = detectedChecker.patches.find(
-                          (item) => item.patchIndex === idx,
-                        );
-                        const measuredRgb = measured?.measuredRgb ?? [0, 0, 0];
-                        return (
-                          <div
-                            key={idx}
-                            title={patch.name}
-                            className="relative rounded-lg border border-gray-200 bg-white p-1.5"
-                          >
-                            <span className="absolute right-1 top-1 rounded bg-white/80 px-1 text-[10px] font-semibold text-gray-500">
-                              {idx + 1}
-                            </span>
-                            <div
-                              className="aspect-square rounded-md border border-black/10"
-                              style={{
-                                backgroundColor: `rgb(${measuredRgb.join(",")})`,
-                              }}
-                            />
-                            <div
-                              className="mt-1 h-1.5 rounded-full border border-black/10"
-                              style={{ backgroundColor: labToHex(patch.lab) }}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-violet-100">
+                    <div
+                      className="h-full rounded-full bg-violet-600"
+                      style={{
+                        width: `${Math.round(detectedChecker.confidence * 100)}%`,
+                      }}
+                    />
                   </div>
-                </>
+                  <p className="mt-2 text-xs text-gray-500">
+                    신뢰도 기준으로 컬러 보정이 적용됩니다.
+                  </p>
+                </div>
               ) : (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700">
                   컬러체커를 자동으로 찾지 못했습니다. 얼굴과 컬러체커가 모두
@@ -859,13 +814,8 @@ export default function ScanPage() {
                 </div>
               )}
 
-              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
-                <div className="rounded-lg bg-white px-3 py-2">
-                  큰 보라색 박스는 카드 영역입니다.
-                </div>
-                <div className="rounded-lg bg-white px-3 py-2">
-                  작은 칸은 자동 샘플링 지점입니다.
-                </div>
+              <div className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-gray-500">
+                보라색 외곽선은 감지된 컬러체커 영역입니다.
               </div>
             </div>
           </div>
@@ -886,7 +836,7 @@ export default function ScanPage() {
               }`}
             >
               {detectedChecker
-                ? `보정 적용 후 분석 (${detectedChecker.patches.length}개 패치)`
+                ? "컬러체커 보정 적용 후 분석"
                 : "보정 없이 분석"}
             </button>
             <div className="flex items-center gap-4 text-sm">
@@ -939,7 +889,7 @@ export default function ScanPage() {
                 className="h-20 w-20 rounded-xl border shadow-inner sm:h-24 sm:w-24"
                 style={{ backgroundColor: result.skin_hex }}
               />
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-4">
                 <div className="rounded-lg bg-gray-50 px-3 py-2">
                   <p className="text-[11px] font-semibold text-gray-700">
                     CIELAB
@@ -953,6 +903,15 @@ export default function ScanPage() {
                   <p className="text-[11px] font-semibold text-gray-700">HEX</p>
                   <p className="mt-1 font-mono text-sm text-gray-600">
                     {result.skin_hex}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-gray-700">
+                    분석 신뢰도
+                  </p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {result.analysis_meta.confidence.level} ·{" "}
+                    {Math.round(result.analysis_meta.confidence.score * 100)}%
                   </p>
                 </div>
                 <div className="rounded-lg bg-gray-50 px-3 py-2">

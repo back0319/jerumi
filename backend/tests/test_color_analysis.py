@@ -8,12 +8,15 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.services.color_analysis import (
     analyze_representative_skin_color,
+    build_correction_matrix,
+    build_skin_correction_matrix,
     compute_recommendations,
     representative_skin_lab_from_regions,
     rgb_pixels_to_lab,
     summarize_skin_regions,
     trimmed_mean_lab,
 )
+from app.schemas.analysis import ColorCheckerPatch
 from app.utils.color_math import delta_e_ciede2000
 
 
@@ -71,6 +74,41 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
 
         self.assertGreaterEqual(corrected_lab[0], base_lab[0] - 1.0)
 
+    def test_skin_correction_is_gentler_than_full_chart_correction(self) -> None:
+        patches = [
+            ColorCheckerPatch(
+                reference_lab=[37.99, 13.56, 14.06],
+                measured_rgb=[120, 92, 82],
+            ),
+            ColorCheckerPatch(
+                reference_lab=[65.71, 18.13, 17.81],
+                measured_rgb=[198, 153, 137],
+            ),
+            ColorCheckerPatch(
+                reference_lab=[70.72, -33.40, -0.20],
+                measured_rgb=[88, 184, 166],
+            ),
+            ColorCheckerPatch(
+                reference_lab=[81.26, -0.64, -0.34],
+                measured_rgb=[180, 184, 190],
+            ),
+        ]
+        pixels = [[204, 168, 154]]
+
+        raw_lab = rgb_pixels_to_lab(pixels)[0]
+        full_matrix = build_correction_matrix(patches)
+        skin_matrix = build_skin_correction_matrix(patches)
+        assert full_matrix is not None
+        assert skin_matrix is not None
+
+        full_lab = rgb_pixels_to_lab(pixels, full_matrix)[0]
+        skin_lab = rgb_pixels_to_lab(pixels, skin_matrix)[0]
+
+        self.assertLess(
+            abs(skin_lab[1] - raw_lab[1]),
+            abs(full_lab[1] - raw_lab[1]),
+        )
+
     def test_region_summary_prefers_cluster_medoid(self) -> None:
         regions = {
             "lower_left_cheek": make_pixels([200, 170, 150], 120, jitter=4),
@@ -90,6 +128,25 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
         self.assertLess(
             delta_e_between(summary.final_lab, expected_cluster_lab),
             delta_e_between(summary.final_lab, outlier_lab),
+        )
+
+    def test_region_summary_excludes_isolated_red_outlier(self) -> None:
+        regions = {
+            "lower_left_cheek": make_pixels([198, 166, 150], 140, jitter=3),
+            "lower_right_cheek": make_pixels([200, 168, 151], 140, jitter=3),
+            "below_lips": make_pixels([197, 165, 149], 140, jitter=3),
+            "chin": make_pixels([236, 128, 126], 140, jitter=3),
+        }
+
+        summary = summarize_skin_regions(regions)
+        expected_lab = rgb_pixels_to_lab([[198, 166, 150]])[0]
+        red_lab = rgb_pixels_to_lab([[236, 128, 126]])[0]
+
+        self.assertIn("chin", summary.excluded_region_names)
+        self.assertLess(delta_e_between(summary.final_lab, expected_lab), 4.0)
+        self.assertLess(
+            delta_e_between(summary.final_lab, expected_lab),
+            delta_e_between(summary.final_lab, red_lab),
         )
 
     def test_region_path_returns_single_valid_region_when_others_too_small(self) -> None:

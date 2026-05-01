@@ -25,6 +25,9 @@ from app.utils.color_math import (
 
 
 _MIN_CORRECTED_LUMINANCE_RATIO = 0.98
+_SKIN_CORRECTION_STRENGTH = 0.55
+_REGION_REDNESS_TRIM_PERCENTILE = 72.0
+_REGION_RED_OUTLIER_DELTA = 3.5
 
 
 @dataclass
@@ -33,6 +36,7 @@ class RegionRepresentativeSummary:
     region_pixel_counts: dict[str, int]
     valid_region_names: list[str]
     region_representatives: dict[str, np.ndarray]
+    excluded_region_names: list[str]
     max_region_delta_e: float | None
 
 
@@ -98,6 +102,8 @@ def categorize_delta_e(delta_e_value: float) -> tuple[str, str, str]:
 
 def build_correction_matrix(
     patches: list[ColorCheckerPatch],
+    *,
+    strength: float = 1.0,
 ) -> np.ndarray | None:
     """Build a 3x3 affine color correction matrix from color checker patches.
 
@@ -126,7 +132,30 @@ def build_correction_matrix(
     # Solve: correction @ M_measured.T = M_reference.T
     # correction = M_reference.T @ pinv(M_measured.T)
     correction, _, _, _ = np.linalg.lstsq(M_measured, M_reference, rcond=None)
-    return correction.T  # (3, 3)
+    correction = correction.T  # (3, 3)
+
+    strength = float(np.clip(strength, 0.0, 1.0))
+    if strength < 1.0:
+        correction = np.eye(3, dtype=np.float64) * (1.0 - strength) + correction * strength
+
+    return correction
+
+
+def build_skin_correction_matrix(
+    patches: list[ColorCheckerPatch],
+) -> np.ndarray | None:
+    """Build a conservative correction matrix for live skin analysis.
+
+    Foundation swatches are photographed on the same plane as the ColorChecker,
+    so full chart correction is appropriate there. Face photos often have
+    different specular highlights and cosmetic redness from the chart plane, so
+    the skin path uses a gentler blend toward identity to avoid over-amplifying
+    a* and b*.
+    """
+    return build_correction_matrix(
+        patches,
+        strength=_SKIN_CORRECTION_STRENGTH,
+    )
 
 
 def rgb_pixels_to_lab(
@@ -247,7 +276,10 @@ def representative_region_lab(lab: np.ndarray) -> np.ndarray:
     Compared with the legacy flat path, this adds an explicit upper-tail trim on
     the a* axis to suppress localized redness before the LAB MAD filter.
     """
-    return _representative_lab(lab, trim_redness_percentile=90.0)
+    return _representative_lab(
+        lab,
+        trim_redness_percentile=_REGION_REDNESS_TRIM_PERCENTILE,
+    )
 
 
 def select_medoid_lab(region_labs: list[np.ndarray]) -> np.ndarray:
@@ -272,6 +304,47 @@ def select_medoid_lab(region_labs: list[np.ndarray]) -> np.ndarray:
         total_distances.append(total_distance)
 
     return stacked[int(np.argmin(total_distances))]
+
+
+def select_balanced_skin_lab(
+    region_representatives: dict[str, np.ndarray],
+    valid_region_names: list[str],
+) -> tuple[np.ndarray, list[str]]:
+    """Select a representative skin LAB while ignoring isolated red outliers."""
+    valid_pairs = [
+        (region_name, region_representatives[region_name])
+        for region_name in valid_region_names
+    ]
+    valid_labs = [lab for _, lab in valid_pairs]
+
+    if len(valid_labs) < 3:
+        return select_medoid_lab(valid_labs), []
+
+    a_values = np.array([lab[1] for lab in valid_labs], dtype=np.float64)
+    median_a = float(np.median(a_values))
+    max_a = float(np.max(a_values))
+    excluded_names: list[str] = []
+    selected_pairs = valid_pairs
+
+    if max_a - median_a >= _REGION_RED_OUTLIER_DELTA:
+        cutoff = min(
+            float(np.percentile(a_values, 75)),
+            median_a + _REGION_RED_OUTLIER_DELTA,
+        )
+        lower_red_pairs = [
+            (region_name, lab)
+            for region_name, lab in valid_pairs
+            if lab[1] <= cutoff
+        ]
+        if len(lower_red_pairs) >= 2:
+            selected_pairs = lower_red_pairs
+            excluded_names = [
+                region_name
+                for region_name, lab in valid_pairs
+                if lab[1] > cutoff
+            ]
+
+    return select_medoid_lab([lab for _, lab in selected_pairs]), excluded_names
 
 
 def _max_pairwise_delta_e(region_labs: list[np.ndarray]) -> float | None:
@@ -324,19 +397,25 @@ def summarize_skin_regions(
             region_pixel_counts=region_pixel_counts,
             valid_region_names=valid_region_names,
             region_representatives=region_representatives,
+            excluded_region_names=[],
             max_region_delta_e=None,
         )
 
     if len(valid_region_labs) == 1:
         final_lab = valid_region_labs[0]
+        excluded_region_names: list[str] = []
     else:
-        final_lab = select_medoid_lab(valid_region_labs)
+        final_lab, excluded_region_names = select_balanced_skin_lab(
+            region_representatives,
+            valid_region_names,
+        )
 
     return RegionRepresentativeSummary(
         final_lab=final_lab,
         region_pixel_counts=region_pixel_counts,
         valid_region_names=valid_region_names,
         region_representatives=region_representatives,
+        excluded_region_names=excluded_region_names,
         max_region_delta_e=_max_pairwise_delta_e(valid_region_labs),
     )
 
@@ -404,6 +483,13 @@ def build_confidence_summary(
         if missing_regions:
             notes.append(
                 "제외된 ROI: " + ", ".join(missing_regions)
+            )
+
+        if region_summary.excluded_region_names:
+            score -= 0.06
+            notes.append(
+                "홍조/입술색 영향이 큰 ROI 제외: "
+                + ", ".join(region_summary.excluded_region_names)
             )
 
         spread = region_summary.max_region_delta_e

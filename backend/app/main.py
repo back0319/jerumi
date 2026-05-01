@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="제루미 API",
     description="CIELAB-based skin tone analysis and foundation recommendation",
-    version="1.2.2",
+    version="1.2.3",
     lifespan=lifespan,
 )
 

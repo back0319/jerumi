@@ -139,54 +139,71 @@ export function AdminPhotoAnalysisForm({
           </div>
 
           <div>
-            <p className="mb-2 text-sm font-medium text-gray-700">
-              자동 감지 결과
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-gray-700">
+                자동 감지 결과
+              </p>
+              {analysisResult && (
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600">
+                  보라색 체커 · 초록색 샘플
+                </span>
+              )}
+            </div>
             {!analysisResult && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
-                색상 추출을 실행하면 컬러체커와 화장품 영역을 자동으로 표시합니다.
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                색상 추출 후 감지 신뢰도와 샘플 색상만 요약됩니다.
               </div>
             )}
             {analysisResult && (
-              <div className="space-y-3">
-                <div
-                  className={`rounded-lg border px-4 py-3 text-sm ${
-                    photoDetection?.color_checker
-                      ? "border-violet-200 bg-violet-50 text-violet-700"
-                      : "border-amber-200 bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  <p className="font-semibold">컬러체커</p>
-                  <p className="mt-1">
-                    {photoDetection?.color_checker
-                      ? `자동 감지됨 · ${photoDetection.color_checker.patches.length}/24 패치 · 신뢰도 ${Math.round(
-                          photoDetection.color_checker.confidence * 100,
-                        )}%`
-                      : "감지되지 않아 색 보정 없이 추출했습니다."}
-                  </p>
-                </div>
-                <div
-                  className={`rounded-lg border px-4 py-3 text-sm ${
-                    photoDetection?.swatch
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-amber-200 bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  <p className="font-semibold">화장품 샘플</p>
-                  <p className="mt-1">
-                    {photoDetection?.swatch
-                      ? `${photoDetection.swatch.pixel_count.toLocaleString()} 픽셀 추출 · ${photoDetection.swatch.sample_hex}`
-                      : "화장품 영역을 확인하지 못했습니다."}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500">
-                  <div className="rounded-lg bg-gray-50 px-3 py-2">
-                    보라색은 컬러체커 영역입니다.
+              <div className="space-y-2">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div
+                    className={`rounded-lg border px-3 py-2 text-sm ${
+                      photoDetection?.color_checker
+                        ? "border-violet-200 bg-violet-50 text-violet-700"
+                        : "border-amber-200 bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    <p className="text-[11px] font-semibold">컬러체커 신뢰도</p>
+                    <p className="mt-1 font-semibold">
+                      {photoDetection?.color_checker
+                        ? `${Math.round(
+                            photoDetection.color_checker.confidence * 100,
+                          )}%`
+                        : "미검출"}
+                    </p>
                   </div>
-                  <div className="rounded-lg bg-gray-50 px-3 py-2">
-                    초록색은 화장품 샘플 영역입니다.
+                  <div
+                    className={`rounded-lg border px-3 py-2 text-sm ${
+                      photoDetection?.swatch
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-amber-200 bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    <p className="text-[11px] font-semibold">화장품 샘플</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      {photoDetection?.swatch && (
+                        <span
+                          className="h-4 w-4 rounded border border-black/10"
+                          style={{
+                            backgroundColor: photoDetection.swatch.sample_hex,
+                          }}
+                        />
+                      )}
+                      <span className="font-semibold">
+                        {photoDetection?.swatch
+                          ? photoDetection.swatch.sample_hex
+                          : "미검출"}
+                      </span>
+                    </div>
                   </div>
                 </div>
+                {photoDetection?.swatch && (
+                  <p className="text-xs text-gray-500">
+                    {photoDetection.swatch.pixel_count.toLocaleString()} 픽셀
+                    기준으로 색상을 추출했습니다.
+                  </p>
+                )}
               </div>
             )}
           </div>

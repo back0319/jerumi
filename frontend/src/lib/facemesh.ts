@@ -141,27 +141,27 @@ export const SKIN_REGIONS: FaceRegionDefinition[] = [
   {
     name: "below_lips",
     buildPoints: (canvas, landmarks) => [
-      // Keep this ROI slightly lower than the vermilion border to reduce lip-color bleed.
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.28),
+      // Keep this ROI below the vermilion border to reduce lip-color bleed.
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.36),
       interpolateLandmark(
         canvas,
         landmarks,
         LOWER_LIP_LEFT_INNER,
         CHIN_TIP,
-        0.25,
+        0.34,
       ),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.22),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.32),
       interpolateLandmark(
         canvas,
         landmarks,
         LOWER_LIP_RIGHT_INNER,
         CHIN_TIP,
-        0.25,
+        0.34,
       ),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.28),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.46),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.54),
-      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.46),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.36),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_RIGHT, CHIN_TIP, 0.58),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_CENTER, CHIN_TIP, 0.64),
+      interpolateLandmark(canvas, landmarks, LOWER_LIP_LEFT, CHIN_TIP, 0.58),
     ],
   },
   {

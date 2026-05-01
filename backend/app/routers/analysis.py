@@ -46,7 +46,7 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     # Build color correction matrix from checker patches
     correction = None
     if req.checker_patches:
-        correction = color_analysis.build_correction_matrix(req.checker_patches)
+        correction = color_analysis.build_skin_correction_matrix(req.checker_patches)
 
     region_payload = None
     if req.skin_regions_rgb is not None:
