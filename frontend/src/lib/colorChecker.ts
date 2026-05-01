@@ -1366,6 +1366,176 @@ function fitGridAxisAbsolute(
   return centers;
 }
 
+function clusterAxisValues(
+  values: number[],
+  clusterGap: number,
+): { centers: number[]; weights: number[] } {
+  if (values.length === 0) return { centers: [], weights: [] };
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const groups: number[][] = [[sorted[0]]];
+  for (const value of sorted.slice(1)) {
+    const current = groups[groups.length - 1];
+    if (Math.abs(value - current[current.length - 1]) > clusterGap) {
+      groups.push([value]);
+    } else {
+      current.push(value);
+    }
+  }
+
+  return {
+    centers: groups.map((group) => median(group)),
+    weights: groups.map((group) => group.length),
+  };
+}
+
+function combinationIndexes(length: number, size: number): number[][] {
+  const results: number[][] = [];
+  const current: number[] = [];
+
+  function visit(start: number): void {
+    if (current.length === size) {
+      results.push([...current]);
+      return;
+    }
+    for (let index = start; index <= length - (size - current.length); index++) {
+      current.push(index);
+      visit(index + 1);
+      current.pop();
+    }
+  }
+
+  visit(0);
+  return results;
+}
+
+function weightedLineFit(
+  xs: number[],
+  ys: number[],
+  weights: number[],
+): { slope: number; intercept: number } | null {
+  const weightTotal = weights.reduce((total, value) => total + value, 0);
+  if (weightTotal <= 0) return null;
+
+  const meanX =
+    xs.reduce((total, value, index) => total + value * weights[index], 0) /
+    weightTotal;
+  const meanY =
+    ys.reduce((total, value, index) => total + value * weights[index], 0) /
+    weightTotal;
+  const variance = xs.reduce(
+    (total, value, index) => total + weights[index] * (value - meanX) ** 2,
+    0,
+  );
+  if (variance <= 1e-8) return null;
+
+  const covariance = xs.reduce(
+    (total, value, index) =>
+      total + weights[index] * (value - meanX) * (ys[index] - meanY),
+    0,
+  );
+  const slope = covariance / variance;
+  return { slope, intercept: meanY - slope * meanX };
+}
+
+function compareTuple(left: number[], right: number[]): number {
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    if (left[index] < right[index]) return -1;
+    if (left[index] > right[index]) return 1;
+  }
+  return left.length - right.length;
+}
+
+function fitGridAxisClustered(
+  values: number[],
+  count: number,
+  [minStep, maxStep]: [number, number],
+  clusterGap: number,
+): number[] | null {
+  const clustered = clusterAxisValues(values, clusterGap);
+  let clusteredCenters = clustered.centers;
+  let clusteredWeights = clustered.weights;
+
+  if (clusteredCenters.length > 12) {
+    const keepIndexes = clusteredWeights
+      .map((weight, index) => ({ weight, index }))
+      .sort((left, right) => right.weight - left.weight)
+      .slice(0, 12)
+      .map(({ index }) => index)
+      .sort((left, right) => left - right);
+    clusteredCenters = keepIndexes.map((index) => clusteredCenters[index]);
+    clusteredWeights = keepIndexes.map((index) => clusteredWeights[index]);
+  }
+
+  const minimumAssignments = Math.max(3, count - 2);
+  if (clusteredCenters.length < minimumAssignments) return null;
+
+  let bestScore: [number, number, number, number] | null = null;
+  let bestCenters: number[] | null = null;
+  const maxSubsetSize = Math.min(count, clusteredCenters.length);
+
+  for (let subsetSize = maxSubsetSize; subsetSize >= minimumAssignments; subsetSize--) {
+    for (const clusterIndexes of combinationIndexes(clusteredCenters.length, subsetSize)) {
+      const observed = clusterIndexes.map((index) => clusteredCenters[index]);
+      const weights = clusterIndexes.map((index) => clusteredWeights[index]);
+      if (observed.length < 2) continue;
+
+      for (const axisIndexes of combinationIndexes(count, subsetSize)) {
+        const fit = weightedLineFit(axisIndexes, observed, weights);
+        if (!fit || fit.slope <= 0) continue;
+        if (fit.slope < minStep * 0.75 || fit.slope > maxStep * 1.35) continue;
+
+        const observedDiffs = observed
+          .slice(1)
+          .map((value, index) => value - observed[index]);
+        if (
+          observedDiffs.length > 0 &&
+          (Math.min(...observedDiffs) < fit.slope * 0.65 ||
+            Math.max(...observedDiffs) > fit.slope * 1.45)
+        ) {
+          continue;
+        }
+
+        const centers = Array.from(
+          { length: count },
+          (_, index) => fit.intercept + fit.slope * index,
+        );
+        if (centers.some((center, index) => index > 0 && center <= centers[index - 1])) {
+          continue;
+        }
+
+        const weightTotal = weights.reduce((total, value) => total + value, 0);
+        const residual =
+          observed.reduce((total, value, index) => {
+            const predicted = fit.intercept + fit.slope * axisIndexes[index];
+            return total + weights[index] * (value - predicted) ** 2;
+          }, 0) / weightTotal;
+        const normalizedResidual = residual / Math.max(fit.slope * fit.slope, 1e-6);
+        const assignedIndexes = new Set(axisIndexes);
+        const missing = Array.from({ length: count }, (_, index) => index).filter(
+          (index) => !assignedIndexes.has(index),
+        );
+        const edgeMissing =
+          (missing.includes(0) ? 1 : 0) + (missing.includes(count - 1) ? 1 : 0);
+        const interiorMissing = missing.length - edgeMissing;
+        const score: [number, number, number, number] = [
+          normalizedResidual + interiorMissing * 12 + edgeMissing * 1.5,
+          -weightTotal,
+          interiorMissing,
+          edgeMissing,
+        ];
+
+        if (!bestScore || compareTuple(score, bestScore) < 0) {
+          bestScore = score;
+          bestCenters = centers;
+        }
+      }
+    }
+  }
+
+  return bestCenters;
+}
+
 function detectPatchGridCandidates(imageData: ImageData): PatchGridCandidate[] {
   const { width, height, data } = imageData;
   const mask = new Uint8Array(width * height);
@@ -1470,9 +1640,10 @@ function fitPatchGridFromCandidates(
   if (medianPatchSide <= 0) return null;
 
   const stepRange: [number, number] = [
-    Math.max(5, medianPatchSide * 0.85),
-    medianPatchSide * 2.3,
+    Math.max(5, medianPatchSide * 0.75),
+    medianPatchSide * 2.7,
   ];
+  const clusterGap = Math.max(3, medianPatchSide * 0.45);
   let bestFit: PatchGridFit | null = null;
   let bestPairCount = 0;
   let bestResidual = Number.POSITIVE_INFINITY;
@@ -1502,8 +1673,8 @@ function fitPatchGridFromCandidates(
       const vAxis = swapAxes ? axes[0] : axes[1];
       const projectedU = centers.map((center) => dotPoint(center, uAxis));
       const projectedV = centers.map((center) => dotPoint(center, vAxis));
-      const uCenters = fitGridAxisAbsolute(projectedU, 6, stepRange);
-      const vCenters = fitGridAxisAbsolute(projectedV, 4, stepRange);
+      const uCenters = fitGridAxisClustered(projectedU, 6, stepRange, clusterGap);
+      const vCenters = fitGridAxisClustered(projectedV, 4, stepRange, clusterGap);
       if (!uCenters || !vCenters) continue;
 
       const uStep = median(
@@ -1606,6 +1777,24 @@ function cardCornersFromPatchGridFit(fit: PatchGridFit): DetectionPoint[] {
       y: fit.uAxis.y * projectedU + fit.vAxis.y * projectedV,
     };
   });
+}
+
+function shiftPatchGridFit(
+  fit: PatchGridFit,
+  uSteps: number,
+  vSteps: number,
+): PatchGridFit {
+  const uStep = median(
+    fit.uCenters.slice(1).map((center, index) => center - fit.uCenters[index]),
+  );
+  const vStep = median(
+    fit.vCenters.slice(1).map((center, index) => center - fit.vCenters[index]),
+  );
+  return {
+    ...fit,
+    uCenters: fit.uCenters.map((center) => center + uSteps * uStep),
+    vCenters: fit.vCenters.map((center) => center + vSteps * vStep),
+  };
 }
 
 function detectPatchGridModel(
@@ -2025,28 +2214,43 @@ function detectColorCheckerFromPatchGrid(
   const fit = fitPatchGridFromCandidates(candidates);
   if (!fit) return null;
 
-  const workingCorners = cardCornersFromPatchGridFit(fit);
-  if (workingCorners.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
-    return null;
+  let bestDetection: ColorCheckerDetection | null = null;
+  for (let uSteps = -2; uSteps <= 2; uSteps++) {
+    for (let vSteps = -1; vSteps <= 1; vSteps++) {
+      const shiftedFit = shiftPatchGridFit(fit, uSteps, vSteps);
+      const workingCorners = cardCornersFromPatchGridFit(shiftedFit);
+      if (
+        workingCorners.some(
+          (point) => !Number.isFinite(point.x) || !Number.isFinite(point.y),
+        )
+      ) {
+        continue;
+      }
+
+      const originalCorners = scalePoints(workingCorners, scale);
+      const homography = cardCornerHomography(originalCorners);
+      if (!homography) continue;
+
+      const localSamples = sampleCheckerGridProjective(fullImageData, homography);
+      const oriented = bestOrientedSamples(localSamples);
+      if (oriented.score > MAX_ACCEPTED_SCORE) continue;
+
+      const detection = detectionFromSamples(
+        oriented.score,
+        originalCorners,
+        {
+          center: projectPoint(homography, [0.5, 0.5]),
+          corners: originalCorners,
+        },
+        oriented.samples,
+      );
+      if (!bestDetection || detection.score < bestDetection.score) {
+        bestDetection = detection;
+      }
+    }
   }
 
-  const originalCorners = scalePoints(workingCorners, scale);
-  const homography = cardCornerHomography(originalCorners);
-  if (!homography) return null;
-
-  const localSamples = sampleCheckerGridProjective(fullImageData, homography);
-  const oriented = bestOrientedSamples(localSamples);
-  if (oriented.score > MAX_ACCEPTED_SCORE) return null;
-
-  return detectionFromSamples(
-    oriented.score,
-    originalCorners,
-    {
-      center: projectPoint(homography, [0.5, 0.5]),
-      corners: originalCorners,
-    },
-    oriented.samples,
-  );
+  return bestDetection;
 }
 
 function createScaledImageData(canvas: HTMLCanvasElement) {

@@ -24,6 +24,9 @@ from app.utils.color_math import (
 )
 
 
+_MIN_CORRECTED_LUMINANCE_RATIO = 0.98
+
+
 @dataclass
 class RegionRepresentativeSummary:
     final_lab: np.ndarray | None
@@ -136,11 +139,17 @@ def rgb_pixels_to_lab(
 
     # Convert to XYZ
     xyz = srgb_to_xyz(arr.reshape(-1, 1, 3)).reshape(-1, 3)
+    source_xyz = xyz.copy()
 
     # Apply color checker correction if available
     if correction_matrix is not None:
         xyz = (correction_matrix @ xyz.T).T
         xyz = np.clip(xyz, 0, None)
+        minimum_y = source_xyz[:, 1] * _MIN_CORRECTED_LUMINANCE_RATIO
+        darker = xyz[:, 1] < minimum_y
+        if np.any(darker):
+            scale = minimum_y[darker] / np.maximum(xyz[darker, 1], 1e-8)
+            xyz[darker] *= scale[:, None]
 
     # XYZ → CIELAB
     lab = xyz_to_lab(xyz.reshape(-1, 1, 3)).reshape(-1, 3)

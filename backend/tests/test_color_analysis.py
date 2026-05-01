@@ -62,6 +62,15 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
             delta_e_between(representative, red_lab),
         )
 
+    def test_color_correction_does_not_crush_luminance(self) -> None:
+        pixels = [[205, 190, 180]]
+        base_lab = rgb_pixels_to_lab(pixels)[0]
+        darkening_matrix = np.diag([0.35, 0.35, 0.35])
+
+        corrected_lab = rgb_pixels_to_lab(pixels, darkening_matrix)[0]
+
+        self.assertGreaterEqual(corrected_lab[0], base_lab[0] - 1.0)
+
     def test_region_summary_prefers_cluster_medoid(self) -> None:
         regions = {
             "lower_left_cheek": make_pixels([200, 170, 150], 120, jitter=4),

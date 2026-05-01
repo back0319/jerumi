@@ -9,6 +9,7 @@ ColorChecker reference after an affine RGB correction.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import combinations
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -951,6 +952,108 @@ def _fit_grid_axis_absolute(
     return centers.astype(float).tolist()
 
 
+def _cluster_axis_values(
+    values: np.ndarray,
+    cluster_gap: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    if len(values) == 0:
+        return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
+
+    sorted_values = np.sort(np.array(values, dtype=np.float64))
+    groups: list[list[float]] = [[float(sorted_values[0])]]
+    for value in sorted_values[1:]:
+        if abs(float(value) - groups[-1][-1]) > cluster_gap:
+            groups.append([float(value)])
+        else:
+            groups[-1].append(float(value))
+
+    centers = np.array([float(np.median(group)) for group in groups], dtype=np.float64)
+    weights = np.array([float(len(group)) for group in groups], dtype=np.float64)
+    return centers, weights
+
+
+def _fit_grid_axis_clustered(
+    values: np.ndarray,
+    count: int,
+    step_range: tuple[float, float],
+    cluster_gap: float,
+) -> list[float] | None:
+    """Fit an evenly spaced grid axis while tolerating one missing edge line.
+
+    Real face photos often expose only three ColorChecker columns as saturated
+    patch components because the neutral edge column blends into the card/body.
+    The regular absolute fitter then treats a near-duplicate component as the
+    missing column and warps the card. This fitter clusters observed patch
+    centers first, rejects non-uniform adjacent gaps, and extrapolates a missing
+    edge line when the remaining centers are evenly spaced.
+    """
+    clustered_centers, clustered_weights = _cluster_axis_values(values, cluster_gap)
+    if len(clustered_centers) < 2:
+        return None
+
+    if len(clustered_centers) > 12:
+        keep_indexes = np.argsort(clustered_weights)[-12:]
+        keep_indexes = np.sort(keep_indexes)
+        clustered_centers = clustered_centers[keep_indexes]
+        clustered_weights = clustered_weights[keep_indexes]
+
+    min_assignments = max(3, count - 2)
+    if len(clustered_centers) < min_assignments:
+        return None
+
+    min_step, max_step = step_range
+    best: tuple[tuple[float, float, int, int], np.ndarray] | None = None
+    max_subset_size = min(count, len(clustered_centers))
+
+    for subset_size in range(max_subset_size, min_assignments - 1, -1):
+        for cluster_indexes in combinations(range(len(clustered_centers)), subset_size):
+            observed = clustered_centers[list(cluster_indexes)]
+            weights = clustered_weights[list(cluster_indexes)]
+            if len(observed) < 2:
+                continue
+
+            for axis_indexes in combinations(range(count), subset_size):
+                x = np.array(axis_indexes, dtype=np.float64)
+                coefficients = np.polyfit(x, observed, 1, w=np.sqrt(weights))
+                step = float(coefficients[0])
+                intercept = float(coefficients[1])
+                if step <= 0:
+                    continue
+                if not (min_step * 0.75 <= step <= max_step * 1.35):
+                    continue
+
+                observed_diffs = np.diff(observed)
+                if len(observed_diffs) > 0 and (
+                    np.min(observed_diffs) < step * 0.65
+                    or np.max(observed_diffs) > step * 1.45
+                ):
+                    continue
+
+                centers = intercept + step * np.arange(count, dtype=np.float64)
+                if np.any(np.diff(centers) <= 0):
+                    continue
+
+                predicted = intercept + step * x
+                residual = float(np.average((observed - predicted) ** 2, weights=weights))
+                normalized_residual = residual / max(step * step, 1e-6)
+                missing = set(range(count)) - set(axis_indexes)
+                edge_missing = int(0 in missing) + int((count - 1) in missing)
+                interior_missing = len(missing) - edge_missing
+                score = (
+                    normalized_residual + interior_missing * 12.0 + edge_missing * 1.5,
+                    -float(np.sum(weights)),
+                    interior_missing,
+                    edge_missing,
+                )
+                if best is None or score < best[0]:
+                    best = (score, centers)
+
+    if best is None:
+        return None
+
+    return best[1].astype(float).tolist()
+
+
 def _detect_patch_grid_candidates(image_rgb: np.ndarray) -> list[_PatchGridCandidate]:
     rgb = image_rgb.astype(np.float64)
     luma = rgb[..., 0] * 0.2126 + rgb[..., 1] * 0.7152 + rgb[..., 2] * 0.0722
@@ -1009,7 +1112,8 @@ def _fit_patch_grid_from_candidates(
     if median_patch_side <= 0:
         return None
 
-    step_range = (max(5.0, median_patch_side * 0.85), median_patch_side * 2.3)
+    step_range = (max(5.0, median_patch_side * 0.75), median_patch_side * 2.7)
+    cluster_gap = max(3.0, median_patch_side * 0.45)
     best_fit: _PatchGridFit | None = None
     best_score: tuple[int, float] | None = None
     seen_neighborhoods: set[tuple[int, ...]] = set()
@@ -1037,8 +1141,18 @@ def _fit_patch_grid_from_candidates(
             v_axis = axes[0] if swap_axes else axes[1]
             projected_u = centers @ u_axis
             projected_v = centers @ v_axis
-            u_centers = _fit_grid_axis_absolute(projected_u, 6, step_range)
-            v_centers = _fit_grid_axis_absolute(projected_v, 4, step_range)
+            u_centers = _fit_grid_axis_clustered(
+                projected_u,
+                6,
+                step_range,
+                cluster_gap,
+            )
+            v_centers = _fit_grid_axis_clustered(
+                projected_v,
+                4,
+                step_range,
+                cluster_gap,
+            )
             if u_centers is None or v_centers is None:
                 continue
 
@@ -1112,6 +1226,24 @@ def _card_corners_from_patch_grid_fit(fit: _PatchGridFit) -> list[DetectionPoint
     return corners
 
 
+def _shift_patch_grid_fit(
+    fit: _PatchGridFit,
+    *,
+    u_steps: int,
+    v_steps: int,
+) -> _PatchGridFit:
+    u_step = float(np.median(np.diff(np.array(fit.u_centers, dtype=np.float64))))
+    v_step = float(np.median(np.diff(np.array(fit.v_centers, dtype=np.float64))))
+    return _PatchGridFit(
+        u_axis=fit.u_axis,
+        v_axis=fit.v_axis,
+        u_centers=[float(value + u_steps * u_step) for value in fit.u_centers],
+        v_centers=[float(value + v_steps * v_step) for value in fit.v_centers],
+        pair_count=fit.pair_count,
+        residual_mean=fit.residual_mean,
+    )
+
+
 def _detect_color_checker_from_patch_grid(
     image_rgb: np.ndarray,
     scale: float,
@@ -1122,35 +1254,43 @@ def _detect_color_checker_from_patch_grid(
     if fit is None:
         return None
 
-    working_corners = _card_corners_from_patch_grid_fit(fit)
-    if working_corners is None:
-        return None
+    best_detection: ColorCheckerDetection | None = None
+    for u_steps in range(-2, 3):
+        for v_steps in range(-1, 2):
+            shifted_fit = _shift_patch_grid_fit(fit, u_steps=u_steps, v_steps=v_steps)
+            working_corners = _card_corners_from_patch_grid_fit(shifted_fit)
+            if working_corners is None:
+                continue
 
-    original_corners = _scale_points(working_corners, scale)
-    homography = _card_corner_homography(original_corners)
-    if homography is None:
-        return None
+            original_corners = _scale_points(working_corners, scale)
+            homography = _card_corner_homography(original_corners)
+            if homography is None:
+                continue
 
-    measured_grid, centers, patch_polygons = _sample_checker_grid_projective(
-        image_rgb,
-        homography,
-    )
-    score, flip_rows, flip_cols, oriented_samples = _best_orientation(measured_grid)
-    if score > _MAX_ACCEPTED_SCORE:
-        return None
+            measured_grid, centers, patch_polygons = _sample_checker_grid_projective(
+                image_rgb,
+                homography,
+            )
+            score, flip_rows, flip_cols, oriented_samples = _best_orientation(measured_grid)
+            if score > _MAX_ACCEPTED_SCORE:
+                continue
 
-    center = _point_to_detection(_project_point(homography, (0.5, 0.5)))
-    return _build_detection(
-        image_rgb,
-        original_corners,
-        score,
-        flip_rows,
-        flip_cols,
-        oriented_samples,
-        centers,
-        patch_polygons,
-        ColorCheckerFiducials(center=center, corners=original_corners),
-    )
+            center = _point_to_detection(_project_point(homography, (0.5, 0.5)))
+            detection = _build_detection(
+                image_rgb,
+                original_corners,
+                score,
+                flip_rows,
+                flip_cols,
+                oriented_samples,
+                centers,
+                patch_polygons,
+                ColorCheckerFiducials(center=center, corners=original_corners),
+            )
+            if best_detection is None or detection.score < best_detection.score:
+                best_detection = detection
+
+    return best_detection
 
 
 def _detect_patch_grid_model(

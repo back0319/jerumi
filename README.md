@@ -1,6 +1,6 @@
 # 제루미
 
-현재 기준 버전: `v1.2.1`
+현재 기준 버전: `v1.2.2`
 
 제루미는 얼굴 사진 1장으로 대표 피부색을 추정하고, 현재 저장된 파운데이션 데이터 중에서 색이 가장 가까운 제품을 추천하는 서비스입니다.
 
@@ -35,6 +35,13 @@
 컬러체커가 함께 찍힌 사진에서는 카드 외곽과 내부 24개 패치 격자를 자동으로 찾고, 측정된 패치 RGB를 표준 ColorChecker LAB 값에 맞춰 XYZ 보정 행렬을 계산합니다. 카드가 머리카락이나 옷처럼 어두운 영역과 붙어 보이는 경우에는 검은 카드 body 대신 6x4 컬러 패치 격자 자체를 찾는 fallback을 사용합니다.
 
 ## 현재 릴리스 요약
+
+### `v1.2.2`
+
+- 얼굴 사진에서 ColorChecker Classic Mini가 화면 가장자리나 일부 어두운 영역에 붙어 있어도 패치 격자 후보를 보정해 자동 감지
+- 패치 격자의 일부 행/열 후보가 빠진 경우에도 균일 간격으로 카드 외곽을 재추정
+- 컬러체커 보정이 피부/회색축 밝기를 과하게 낮추지 않도록 XYZ 보정 후 luminance floor 적용
+- 제공된 얼굴+컬러체커 3장 기준 컬러체커 자동 감지와 패치 ΔE 개선을 확인
 
 ### `v1.2.1`
 
@@ -277,7 +284,7 @@ python -m app.utils.seed
 
 현재 운영 점검 메모:
 
-- 이번 `v1.2.1` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
+- 이번 `v1.2.2` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
 - Supabase Storage 업로드/삭제는 backend에서만 `SUPABASE_SERVICE_ROLE_KEY`를 사용합니다. 이 값은 절대 브라우저로 노출하면 안 됩니다.
 - Supabase advisor가 `public.foundations`의 RLS 비활성화를 보안 ERROR로 표시할 수 있습니다. 앱은 backend API를 통해 접근하지만, Supabase public schema 노출 정책상 운영에서는 RLS 활성화와 정책 설정을 별도 작업으로 정리하는 것이 안전합니다.
 7. foundation 삭제 시 Storage object 정리 확인
