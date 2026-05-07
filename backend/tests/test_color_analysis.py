@@ -292,6 +292,40 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
         )
         self.assertEqual(recommendations[0]["shade_name"], expected_first["shade_name"])
 
+    def test_compute_recommendations_accepts_json_lab_list(self) -> None:
+        foundations = [
+            {
+                "id": 1,
+                "brand": "Smoke",
+                "product_name": "",
+                "shade_code": "A",
+                "shade_name": "Exact",
+                "L_value": 70.0,
+                "a_value": 5.0,
+                "b_value": 12.0,
+                "hex_color": "#c7a892",
+                "undertone": None,
+            },
+            {
+                "id": 2,
+                "brand": "Smoke",
+                "product_name": "",
+                "shade_code": "B",
+                "shade_name": "Far",
+                "L_value": 62.0,
+                "a_value": 14.0,
+                "b_value": 24.0,
+                "hex_color": "#a97858",
+                "undertone": None,
+            },
+        ]
+
+        recommendations = compute_recommendations([70.0, 5.0, 12.0], foundations, top_n=1)
+
+        self.assertEqual(len(recommendations), 1)
+        self.assertEqual(recommendations[0]["shade_name"], "Exact")
+        self.assertAlmostEqual(recommendations[0]["delta_e"], 0.0, places=3)
+
     def test_delta_e_ciede2000_matches_reference_pair(self) -> None:
         left = np.array([50.0, 2.6772, -79.7751], dtype=np.float64)
         right = np.array([50.0, 0.0, -82.7485], dtype=np.float64)

@@ -631,13 +631,13 @@ def lab_to_hex(lab: np.ndarray) -> str:
 
 
 def compute_recommendations(
-    skin_lab: np.ndarray,
+    skin_lab: np.ndarray | list[float],
     foundations: list[dict],
     top_n: int = 5,
 ) -> list[dict]:
     """Compute CIEDE2000 delta E between skin and each foundation, return top N."""
     results = []
-    skin = skin_lab.reshape(1, 1, 3)
+    skin = np.asarray(skin_lab, dtype=np.float64).reshape(1, 1, 3)
 
     for f in foundations:
         shade_lab = np.array([f["L_value"], f["a_value"], f["b_value"]]).reshape(1, 1, 3)

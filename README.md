@@ -1,6 +1,6 @@
 # 제루미
 
-현재 기준 버전: `v1.3.4`
+현재 기준 버전: `v1.3.5`
 
 제루미는 얼굴 사진 1장으로 대표 피부색을 추정하고, 현재 저장된 파운데이션 데이터 중에서 색이 가장 가까운 제품을 추천하는 서비스입니다.
 
@@ -35,6 +35,15 @@
 컬러체커가 함께 찍힌 사진에서는 카드 외곽과 내부 24개 패치 격자를 자동으로 찾고, 측정된 패치 RGB를 표준 ColorChecker LAB 값에 맞춰 XYZ 보정 행렬을 계산합니다. 카드가 머리카락이나 옷처럼 어두운 영역과 붙어 보이는 경우에는 검은 카드 body 대신 6x4 컬러 패치 격자 자체를 찾는 fallback을 사용합니다.
 
 ## 현재 릴리스 요약
+
+### `v1.3.5`
+
+- 피부톤 분석 후 브랜드/제품 선택 시 전체 `/api/analyze`를 다시 돌리지 않고, 이미 계산된 `skin_lab`으로 `POST /api/recommendations`만 호출하도록 변경. 브랜드 선택 대기 시간을 줄이고 같은 브랜드 재선택은 클라이언트 캐시를 사용합니다.
+- `/scan`의 브랜드 선택지는 추천 상위 N개가 아니라 DB에 저장된 전체 브랜드를 `GET /api/foundations/brands`에서 불러오도록 수정. 새로 저장한 브랜드가 피부톤 분석 후 추천 필터와 브랜드 선택에 바로 노출됩니다.
+- `GET` API 호출에 `cache: "no-store"`를 적용해 파운데이션/브랜드 목록이 브라우저 캐시에 묶이지 않도록 정리했습니다.
+- 추천 전용 API가 JSON LAB 배열을 NumPy 배열로 변환하지 못해 500을 내던 문제 수정. `compute_recommendations`가 `np.ndarray`와 JSON `list[float]` 입력을 모두 처리합니다.
+- 관리자 사진 기반 저장은 이미 계산된 `analysis_result`를 재사용하고, Storage 업로드 이미지는 장변 1600px JPEG로 줄여 저장 대기 시간을 줄였습니다.
+- `APP_VERSION` 및 frontend package 버전을 `v1.3.5` / `1.3.5`로 갱신. DB 스키마 변경 없음. Supabase 마이그레이션 불필요.
 
 ### `v1.3.4`
 
@@ -299,6 +308,7 @@ npx vercel@latest dev -L
 | 경로 | 역할 |
 | --- | --- |
 | `POST /api/analyze` | 얼굴 피부 ROI 픽셀을 분석하고 추천 결과를 반환 |
+| `POST /api/recommendations` | 이미 계산된 피부 LAB 값으로 브랜드/제품 필터 추천만 재계산 |
 | `GET /api/health` | 헬스체크 |
 | `POST /api/auth/login` | 관리자 로그인 |
 | `GET /api/foundations` | 파운데이션 목록 조회 |
@@ -352,10 +362,10 @@ python -m app.utils.seed
 
 현재 운영 점검 메모:
 
-- 이번 `v1.3.4` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
+- 이번 `v1.3.5` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
 - Supabase Storage 업로드/삭제는 backend에서만 `SUPABASE_SERVICE_ROLE_KEY`를 사용합니다. 이 값은 절대 브라우저로 노출하면 안 됩니다.
 - Supabase advisor가 `public.foundations`의 RLS 비활성화를 보안 ERROR로 표시할 수 있습니다. 앱은 backend API를 통해 접근하지만, Supabase public schema 노출 정책상 운영에서는 RLS 활성화와 정책 설정을 별도 작업으로 정리하는 것이 안전합니다.
-7. foundation 삭제 시 Storage object 정리 확인
+- foundation 삭제 시 Storage object 정리 확인
 
 ## 참고 문서
 
