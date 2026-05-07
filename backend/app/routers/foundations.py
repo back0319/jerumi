@@ -5,6 +5,7 @@ import logging
 from functools import lru_cache
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,53 @@ def get_storage_service():
     return storage
 
 
+def _parse_checker_patches(
+    checker_patches: str | None,
+) -> list[ColorCheckerPatch] | None:
+    if not checker_patches:
+        return None
+
+    try:
+        raw = json.loads(checker_patches)
+        return [ColorCheckerPatch(**patch) for patch in raw]
+    except (json.JSONDecodeError, ValidationError, TypeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid checker_patches JSON: {exc}",
+        ) from exc
+
+
+def _parse_analysis_result(
+    analysis_result: str | None,
+) -> FoundationAnalysisResult | None:
+    if not analysis_result:
+        return None
+
+    try:
+        return FoundationAnalysisResult.model_validate_json(analysis_result)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid analysis_result JSON: {exc}",
+        ) from exc
+
+
+def _analyze_swatch_image(
+    contents: bytes,
+    checker_patches: str | None,
+) -> FoundationAnalysisResult:
+    patches = _parse_checker_patches(checker_patches)
+    try:
+        result = get_swatch_extraction_service().extract_swatch_from_image(
+            contents,
+            patches,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return FoundationAnalysisResult(**result)
+
+
 @router.post("/analyze-swatch", response_model=FoundationAnalysisResult)
 async def analyze_swatch(
     image: UploadFile = File(...),
@@ -53,20 +101,7 @@ async def analyze_swatch(
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image too large (max 20MB)")
 
-    patches = None
-    if checker_patches:
-        try:
-            raw = json.loads(checker_patches)
-            patches = [ColorCheckerPatch(**p) for p in raw]
-        except (json.JSONDecodeError, Exception) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid checker_patches JSON: {e}")
-
-    try:
-        result = get_swatch_extraction_service().extract_swatch_from_image(contents, patches)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    return FoundationAnalysisResult(**result)
+    return _analyze_swatch_image(contents, checker_patches)
 
 
 @router.post("/from-photo", response_model=FoundationOut)
@@ -77,6 +112,7 @@ async def create_foundation_from_photo(
     shade_name: str = Form(...),
     shade_code: str = Form(""),
     checker_patches: str | None = Form(None),
+    analysis_result: str | None = Form(None),
     _admin: str = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -89,18 +125,9 @@ async def create_foundation_from_photo(
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image too large (max 20MB)")
 
-    patches = None
-    if checker_patches:
-        try:
-            raw = json.loads(checker_patches)
-            patches = [ColorCheckerPatch(**p) for p in raw]
-        except (json.JSONDecodeError, Exception) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid checker_patches JSON: {e}")
-
-    try:
-        result = get_swatch_extraction_service().extract_swatch_from_image(contents, patches)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    result = _parse_analysis_result(analysis_result)
+    if result is None:
+        result = _analyze_swatch_image(contents, checker_patches)
 
     try:
         upload_result = get_storage_service().upload_swatch_image(
@@ -120,11 +147,11 @@ async def create_foundation_from_photo(
         product_name=product_name,
         shade_code=shade_code,
         shade_name=shade_name,
-        L_value=result["L_value"],
-        a_value=result["a_value"],
-        b_value=result["b_value"],
-        hex_color=result["hex_color"],
-        undertone=result["undertone"],
+        L_value=result.L_value,
+        a_value=result.a_value,
+        b_value=result.b_value,
+        hex_color=result.hex_color,
+        undertone=result.undertone,
         swatch_image_url=upload_result.public_url,
     )
     db.add(f)

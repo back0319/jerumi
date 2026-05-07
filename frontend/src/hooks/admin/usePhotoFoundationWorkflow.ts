@@ -33,6 +33,86 @@ type UsePhotoFoundationWorkflowArgs = {
 
 const MAX_CANDIDATES = 5;
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const SAVE_IMAGE_MAX_DIMENSION = 1600;
+const SAVE_IMAGE_QUALITY = 0.82;
+
+function fileBaseName(filename: string): string {
+  const dotIndex = filename.lastIndexOf(".");
+  return dotIndex > 0 ? filename.slice(0, dotIndex) : filename || "swatch";
+}
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+    image.onload = () => {
+      cleanup();
+      resolve(image);
+    };
+    image.onerror = () => {
+      cleanup();
+      reject(new Error("이미지를 읽지 못했습니다."));
+    };
+    image.src = objectUrl;
+  });
+}
+
+async function resizePhotoForStorageUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) {
+    return file;
+  }
+
+  try {
+    const image = await loadImageFromFile(file);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    const longestSide = Math.max(width, height);
+    if (!width || !height || !longestSide) {
+      return file;
+    }
+
+    const scale = Math.min(1, SAVE_IMAGE_MAX_DIMENSION / longestSide);
+    if (scale === 1 && file.type === "image/jpeg" && file.size <= 900_000) {
+      return file;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return file;
+    }
+
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", SAVE_IMAGE_QUALITY);
+    });
+
+    if (!blob || blob.size >= file.size) {
+      return file;
+    }
+
+    return new File([blob], `${fileBaseName(file.name)}.jpg`, {
+      type: "image/jpeg",
+      lastModified: file.lastModified,
+    });
+  } catch {
+    return file;
+  }
+}
+
+function serializeCachedAnalysis(result: FoundationAnalysisResult): string {
+  return JSON.stringify({
+    L_value: result.L_value,
+    a_value: result.a_value,
+    b_value: result.b_value,
+    hex_color: result.hex_color,
+    undertone: result.undertone,
+  });
+}
 
 export type PhotoCandidate = {
   id: string;
@@ -358,12 +438,17 @@ export function usePhotoFoundationWorkflow({
     setIsSavingPhoto(true);
 
     try {
+      const uploadFile = await resizePhotoForStorageUpload(photoFile);
       const formData = new FormData();
-      formData.append("image", photoFile);
+      formData.append("image", uploadFile, uploadFile.name);
       formData.append("brand", photoMeta.brand);
       formData.append("product_name", photoMeta.product_name);
       formData.append("shade_name", photoMeta.shade_name);
       formData.append("shade_code", photoMeta.shade_code);
+      formData.append(
+        "analysis_result",
+        serializeCachedAnalysis(analysisResult),
+      );
 
       const created = await apiAuthPostFormData<Foundation>(
         "/foundations/from-photo",
