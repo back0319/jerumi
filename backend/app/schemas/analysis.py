@@ -22,6 +22,7 @@ class AnalysisRequest(BaseModel):
     skin_regions_rgb: SkinRegionPixels | None = None
     checker_patches: list[ColorCheckerPatch] | None = None
     brands: list[str] | None = None
+    product_names: list[str] | None = None
     top_n: int = 5
 
 

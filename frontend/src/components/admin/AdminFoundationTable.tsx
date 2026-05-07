@@ -1,4 +1,5 @@
 import type { Foundation } from "@/types";
+import { displayShade } from "@/lib/foundation";
 
 type AdminFoundationTableProps = {
   filterBrand: string;
@@ -39,12 +40,7 @@ export function AdminFoundationTable({
                   {foundation.brand}
                 </p>
                 <p className="truncate text-sm text-gray-700">
-                  {foundation.shade_name}
-                  {foundation.shade_code && (
-                    <span className="ml-1 text-gray-400">
-                      ({foundation.shade_code})
-                    </span>
-                  )}
+                  {displayShade(foundation)}
                 </p>
                 {foundation.product_name && (
                   <p className="truncate text-xs text-gray-400">
@@ -110,12 +106,7 @@ export function AdminFoundationTable({
                     {foundation.brand}
                   </p>
                   <p className="truncate text-gray-700">
-                    {foundation.shade_name}
-                    {foundation.shade_code && (
-                      <span className="ml-1 text-gray-400">
-                        ({foundation.shade_code})
-                      </span>
-                    )}
+                    {displayShade(foundation)}
                   </p>
                   {foundation.product_name && (
                     <p className="truncate text-xs text-gray-400">

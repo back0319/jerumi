@@ -1,6 +1,6 @@
 # 제루미
 
-현재 기준 버전: `v1.2.6`
+현재 기준 버전: `v1.3.0`
 
 제루미는 얼굴 사진 1장으로 대표 피부색을 추정하고, 현재 저장된 파운데이션 데이터 중에서 색이 가장 가까운 제품을 추천하는 서비스입니다.
 
@@ -35,6 +35,14 @@
 컬러체커가 함께 찍힌 사진에서는 카드 외곽과 내부 24개 패치 격자를 자동으로 찾고, 측정된 패치 RGB를 표준 ColorChecker LAB 값에 맞춰 XYZ 보정 행렬을 계산합니다. 카드가 머리카락이나 옷처럼 어두운 영역과 붙어 보이는 경우에는 검은 카드 body 대신 6x4 컬러 패치 격자 자체를 찾는 fallback을 사용합니다.
 
 ## 현재 릴리스 요약
+
+### `v1.3.0`
+
+- 화장품 색상 추출에 **다중 사진 업로드** 추가: 한 환경에서 찍은 사진을 한 번에 최대 5장까지 선택하면 `/foundations/analyze-swatch`를 병렬 호출해 모두 분석하고, 분석 신뢰도가 가장 높은 사진을 자동으로 기준(primary)으로 지정. 후보 thumbnail strip에서 클릭으로 기준을 바꿀 수 있고, 사진 간 LAB ΔE76 평균/최대를 한 줄로 보여줘 촬영 일관성을 사후 확인 가능. 저장은 기준 사진 1장만 DB에 들어감(기존 흐름과 호환).
+- 피부 분석 결과에 **브랜드·제품별 호수 비교 패널** 추가: 브랜드를 고르면 `/api/analyze`를 `brands:[brand]`, `top_n:200`으로 재호출해 그 브랜드 안의 호수들을 ΔE 오름차순으로 가져오고, 제품을 고르면 그 라인의 호수들만 카드 strip으로 비교. 내 피부색 스와치와 각 호수 스와치를 같은 줄에 둬서 색·호수·ΔE를 한눈에 비교 가능.
+- 백엔드: `POST /api/analyze`에 `product_names: list[str]` 필터 추가. 기존 `brands` 필터와 AND 조합.
+- 브랜드마다 호수 표기 방식이 달라(예: "21호" vs "Vanilla 1.5") 입력 폼의 `shade_name` + `shade_code` 두 칸을 **`shade_name` 한 칸**으로 통합. 신규 입력은 "색상명/호수" 자유 형식. 기존 데이터 호환을 위해 `shade_code` 컬럼은 유지하고, 표시 시 두 값이 다르면 `"이름 / 코드"` 형식으로 합쳐서 보여줌(`displayShade` 헬퍼).
+- DB 스키마 변경 없음. Supabase 마이그레이션 불필요.
 
 ### `v1.2.6`
 
@@ -322,7 +330,7 @@ python -m app.utils.seed
 
 현재 운영 점검 메모:
 
-- 이번 `v1.2.6` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
+- 이번 `v1.3.0` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
 - Supabase Storage 업로드/삭제는 backend에서만 `SUPABASE_SERVICE_ROLE_KEY`를 사용합니다. 이 값은 절대 브라우저로 노출하면 안 됩니다.
 - Supabase advisor가 `public.foundations`의 RLS 비활성화를 보안 ERROR로 표시할 수 있습니다. 앱은 backend API를 통해 접근하지만, Supabase public schema 노출 정책상 운영에서는 RLS 활성화와 정책 설정을 별도 작업으로 정리하는 것이 안전합니다.
 7. foundation 삭제 시 Storage object 정리 확인

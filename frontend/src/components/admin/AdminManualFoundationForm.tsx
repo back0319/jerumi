@@ -55,17 +55,11 @@ export function AdminManualFoundationForm({
           required
         />
         <input
-          placeholder="색상명"
+          placeholder="색상명/호수 (예: 21호 / Vanilla 1.5)"
           value={form.shade_name}
           onChange={(event) => updateField("shade_name", event.target.value)}
-          className="rounded border px-3 py-2"
+          className="rounded border px-3 py-2 md:col-span-2"
           required
-        />
-        <input
-          placeholder="호수 (예: 21호)"
-          value={form.shade_code}
-          onChange={(event) => updateField("shade_code", event.target.value)}
-          className="rounded border px-3 py-2"
         />
         <input
           placeholder="L* 값"

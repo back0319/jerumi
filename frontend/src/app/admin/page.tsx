@@ -103,6 +103,10 @@ export default function AdminPage() {
           photoError={photoWorkflow.photoError}
           photoImgRef={photoWorkflow.photoImgRef}
           photoCanvasRef={photoWorkflow.photoCanvasRef}
+          candidates={photoWorkflow.candidates}
+          primaryId={photoWorkflow.primaryId}
+          deltaStats={photoWorkflow.deltaStats}
+          onSetPrimary={photoWorkflow.setPrimary}
           onPhotoMetaFieldChange={photoWorkflow.updatePhotoMetaField}
           onPhotoUpload={photoWorkflow.handlePhotoUpload}
           onPhotoImageLoad={photoWorkflow.handlePhotoImageLoad}

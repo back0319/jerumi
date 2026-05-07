@@ -84,10 +84,12 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
         skin_lab_raw = analysis.skin_lab
         skin_hex_raw = skin_hex
 
-    # Query foundations, optionally filtered by brand
+    # Query foundations, optionally filtered by brand and/or product
     query = select(Foundation)
     if req.brands:
         query = query.where(Foundation.brand.in_(req.brands))
+    if req.product_names:
+        query = query.where(Foundation.product_name.in_(req.product_names))
     result = await db.execute(query)
     foundations = result.scalars().all()
 
