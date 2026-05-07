@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -162,6 +162,28 @@ class SwatchExtractionTests(unittest.TestCase):
 
         self.assertLess(delta_e_between(actual_lab, expected_lab), 5.0)
         self.assertIsNotNone(result["detection"]["swatch"])
+
+    def test_extract_swatch_in_low_light_does_not_pick_checker_body(self) -> None:
+        swatch_rgb = (118, 107, 83)
+        image = Image.new("RGB", (760, 1000), (113, 114, 110))
+        checker = make_synthetic_checker_card(width=620, height=390)
+        checker = ImageEnhance.Brightness(checker).enhance(0.58)
+        image.paste(checker, (70, 560))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((230, 150, 530, 360), fill=swatch_rgb)
+
+        payload = BytesIO()
+        image.save(payload, format="PNG")
+
+        result = extract_swatch_from_image(payload.getvalue())
+
+        self.assertIsNotNone(result["detection"]["color_checker"])
+        swatch = result["detection"]["swatch"]
+        self.assertIsNotNone(swatch)
+        assert swatch is not None
+        swatch_top = min(point["y"] for point in swatch["polygon"])
+        self.assertLess(swatch_top, 430)
+        self.assertGreater(result["L_value"], 35.0)
 
 
 if __name__ == "__main__":

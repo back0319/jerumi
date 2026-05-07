@@ -38,12 +38,41 @@ type AnalysisOverlay = SkinOverlayBase & {
   colorChecker: ColorCheckerDetection | null;
 };
 
+const CHECKER_ACCEPTED_SCORE = 70;
+const EXPECTED_CHECKER_PATCH_COUNT = 24;
+
 function getDeltaEBadgeClass(deltaE: number): string {
   if (deltaE <= 1.0) return "bg-green-100 text-green-700";
   if (deltaE <= 2.0) return "bg-emerald-100 text-emerald-700";
   if (deltaE <= 3.5) return "bg-yellow-100 text-yellow-700";
   if (deltaE <= 5.0) return "bg-orange-100 text-orange-700";
   return "bg-red-100 text-red-700";
+}
+
+function getCheckerQuality(score: number): {
+  label: string;
+  badgeClassName: string;
+  accentClassName: string;
+} {
+  if (score <= 30) {
+    return {
+      label: "안정적",
+      badgeClassName: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+      accentClassName: "text-emerald-700",
+    };
+  }
+  if (score <= 50) {
+    return {
+      label: "사용 가능",
+      badgeClassName: "bg-sky-50 text-sky-700 ring-sky-200",
+      accentClassName: "text-sky-700",
+    };
+  }
+  return {
+    label: "검토 필요",
+    badgeClassName: "bg-amber-50 text-amber-700 ring-amber-200",
+    accentClassName: "text-amber-700",
+  };
 }
 
 export default function ScanPage() {
@@ -80,6 +109,13 @@ export default function ScanPage() {
       ? result.recommendations
       : result.recommendations.slice(0, INITIAL_VISIBLE_RECOMMENDATIONS)
     : [];
+  const checkerPatchCount = detectedChecker?.patches.length ?? 0;
+  const checkerConfidence = detectedChecker
+    ? Math.round(detectedChecker.confidence * 100)
+    : 0;
+  const checkerQuality = detectedChecker
+    ? getCheckerQuality(detectedChecker.score)
+    : null;
 
   const revokeUploadedObjectUrl = useCallback(() => {
     if (!uploadedObjectUrlRef.current) return;
@@ -297,7 +333,26 @@ export default function ScanPage() {
       return;
     }
 
-    redrawPreviewCanvas(analysisOverlay);
+    const recalculatedChecker = detectColorCheckerFromCanvas(canvas);
+    let overlayForPreview = analysisOverlay;
+
+    if (
+      analysisOverlay &&
+      recalculatedChecker &&
+      (!analysisOverlay.colorChecker ||
+        recalculatedChecker.score < analysisOverlay.colorChecker.score)
+    ) {
+      overlayForPreview = {
+        ...analysisOverlay,
+        colorChecker: recalculatedChecker,
+      };
+      setAnalysisOverlay(overlayForPreview);
+      setDetectedChecker(recalculatedChecker);
+    } else if (analysisOverlay?.colorChecker) {
+      setDetectedChecker(analysisOverlay.colorChecker);
+    }
+
+    redrawPreviewCanvas(overlayForPreview);
     setCheckerImageStatus("ready");
     setCheckerImageError(null);
   }, [analysisOverlay, drawImageToCanvas, redrawPreviewCanvas]);
@@ -569,7 +624,7 @@ export default function ScanPage() {
   }, [clearDetectionTimeout, revokeUploadedObjectUrl]);
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-3 sm:px-4 sm:py-4">
+    <div className="mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-4">
       <h1 className="mb-4 text-2xl font-bold sm:mb-5">피부톤 분석</h1>
 
       {error && (
@@ -679,11 +734,9 @@ export default function ScanPage() {
             <div className="grid grid-cols-3 gap-2 text-center text-xs sm:w-fit">
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
-                  {detectedChecker
-                    ? `${Math.round(detectedChecker.confidence * 100)}%`
-                    : "미검출"}
+                  {detectedChecker ? checkerQuality?.label : "미검출"}
                 </p>
-                <p className="text-gray-500">체커 신뢰도</p>
+                <p className="text-gray-500">체커 상태</p>
               </div>
               <div className="rounded-lg bg-gray-50 px-3 py-2">
                 <p className="font-semibold text-gray-800">
@@ -700,15 +753,15 @@ export default function ScanPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
+          <div className="grid gap-4 lg:grid-cols-[minmax(380px,0.95fr)_minmax(420px,1.05fr)] xl:grid-cols-[minmax(420px,0.9fr)_minmax(520px,1.1fr)] lg:items-start">
             <div className="space-y-3">
-              <div className="relative inline-block max-w-full">
+              <div className="relative w-full overflow-hidden rounded-xl border bg-gray-50">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   ref={checkerImgRef}
                   src={imageUrl ?? ""}
                   alt="컬러체커 보정 원본"
-                  className="block max-w-full rounded-xl border max-h-[34vh] sm:max-h-[40vh] lg:max-h-[46vh]"
+                  className="block w-full max-h-[44vh] object-contain sm:max-h-[52vh] lg:max-h-[58vh]"
                   onLoad={handleCheckerImageLoad}
                   onError={handleCheckerImageError}
                 />
@@ -718,106 +771,166 @@ export default function ScanPage() {
                 />
               </div>
               <canvas ref={processingCanvasRef} className="hidden" />
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
-                  <p className="text-[11px] font-semibold text-gray-700">
-                    이미지 상태
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {checkerImageStatus === "loading"
-                      ? "감지 결과 이미지를 준비하는 중입니다."
-                      : checkerImageStatus === "error"
-                        ? checkerImageError
-                        : "오버레이로 감지 영역을 확인하세요."}
-                  </p>
+              {analysisOverlay && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span className="font-semibold text-gray-700">추출 색상</span>
+                  <span
+                    className="inline-block h-5 w-5 rounded border border-black/10"
+                    style={{ backgroundColor: analysisOverlay.sampleHex }}
+                  />
+                  <span className="font-mono">{analysisOverlay.sampleHex}</span>
                 </div>
-                {analysisOverlay && (
-                  <>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
-                      <p className="text-[11px] font-semibold text-gray-700">
-                        감지 방식
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {analysisOverlay.mode === "facemesh"
-                          ? "피부 영역 자동 감지"
-                          : "중심 fallback 영역"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
-                      <p className="text-[11px] font-semibold text-gray-700">
-                        추출 영역 미리보기
-                      </p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <span
-                          className="inline-block h-5 w-5 rounded border border-black/10"
-                          style={{ backgroundColor: analysisOverlay.sampleHex }}
-                        />
-                        <span className="text-[11px] font-mono text-gray-500">
-                          {analysisOverlay.sampleHex}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-left">
-                      <p className="text-[11px] font-semibold text-gray-700">
-                        컬러체커
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {detectedChecker
-                          ? `자동 감지됨 · score ${detectedChecker.score}`
-                          : "감지되지 않아 보정 없이 진행합니다."}
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
+              )}
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4 lg:p-5">
+              <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">
-                    컬러체커 자동 보정
+                    분석 전 보정 요약
                   </p>
                   <p className="mt-1 text-xs text-gray-500">
-                    자동 감지 신뢰도를 기준으로 보정 적용 여부를 확인합니다.
+                    컬러체커 검출 품질과 적용 여부를 확인합니다.
                   </p>
                 </div>
-                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600">
-                  {detectedChecker ? "auto" : "not found"}
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${
+                    checkerQuality
+                      ? checkerQuality.badgeClassName
+                      : "bg-amber-50 text-amber-700 ring-amber-200"
+                  }`}
+                >
+                  {detectedChecker ? checkerQuality?.label : "미검출"}
                 </span>
               </div>
 
               {detectedChecker ? (
-                <div className="rounded-lg bg-white px-3 py-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-medium text-gray-700">신뢰도</span>
-                    <span className="font-semibold text-violet-700">
-                      {Math.round(detectedChecker.confidence * 100)}%
-                    </span>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        오차값 score
+                      </p>
+                      <p
+                        className={`mt-1 text-lg font-semibold ${checkerQuality?.accentClassName}`}
+                      >
+                        {detectedChecker.score.toFixed(2)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        낮을수록 정확
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        검출 신뢰도
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-800">
+                        {checkerConfidence}%
+                      </p>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                        <div
+                          className="h-full rounded-full bg-rose-500"
+                          style={{ width: `${checkerConfidence}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        높을수록 안정
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        찾은 패치 수
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-800">
+                        {checkerPatchCount}/{EXPECTED_CHECKER_PATCH_COUNT}
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        보정에 쓰는 색 패치
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        보정 적용
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-800">
+                        ON
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        분석 요청에 포함
+                      </p>
+                    </div>
                   </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-violet-100">
-                    <div
-                      className="h-full rounded-full bg-violet-600"
-                      style={{
-                        width: `${Math.round(detectedChecker.confidence * 100)}%`,
-                      }}
-                    />
+                  <div className="grid gap-2 text-xs text-gray-500 sm:grid-cols-2">
+                    <p>
+                      <span className="font-semibold text-gray-700">
+                        score
+                      </span>
+                      는 기준색과 검출 패치 색의 평균 오차입니다.{" "}
+                      {CHECKER_ACCEPTED_SCORE} 이하면 보정에 사용합니다.
+                    </p>
+                    <p>
+                      <span className="font-semibold text-gray-700">
+                        신뢰도
+                      </span>
+                      는 score를 0-100%로 환산한 값입니다. 높을수록 체커 위치와
+                      색 샘플이 안정적입니다.
+                    </p>
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">
-                    신뢰도 기준으로 컬러 보정이 적용됩니다.
-                  </p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-700">
-                  컬러체커를 자동으로 찾지 못했습니다. 얼굴과 컬러체커가 모두
-                  보이는 사진으로 다시 촬영하면 색 보정이 적용됩니다.
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        오차값 score
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-400">
+                        -
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        낮을수록 정확
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        검출 신뢰도
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-400">
+                        -
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        높을수록 안정
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        찾은 패치 수
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-400">
+                        0/{EXPECTED_CHECKER_PATCH_COUNT}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white px-3 py-3">
+                      <p className="text-[11px] font-semibold text-gray-500">
+                        보정 적용
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-400">
+                        OFF
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 text-xs text-gray-500 sm:grid-cols-2">
+                    <p>
+                      <span className="font-semibold text-gray-700">
+                        score
+                      </span>
+                      와 신뢰도는 컬러체커가 검출되면 표시됩니다.
+                    </p>
+                    <p>컬러체커를 찾지 못하면 보정 없이 분석합니다.</p>
+                  </div>
                 </div>
               )}
-
-              <div className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-gray-500">
-                보라색 외곽선은 감지된 컬러체커 영역입니다.
               </div>
-            </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

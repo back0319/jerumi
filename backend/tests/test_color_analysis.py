@@ -124,11 +124,27 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
         self.assertEqual(len(summary.valid_region_names), 4)
         self.assertIsNotNone(summary.final_lab)
         self.assertIsNotNone(summary.max_region_delta_e)
+        self.assertNotIn("chin", summary.excluded_region_names)
         self.assertLess(delta_e_between(summary.final_lab, expected_cluster_lab), 4.0)
         self.assertLess(
             delta_e_between(summary.final_lab, expected_cluster_lab),
             delta_e_between(summary.final_lab, outlier_lab),
         )
+
+    def test_region_summary_keeps_moderately_red_bright_cheek(self) -> None:
+        regions = {
+            "lower_left_cheek": make_pixels([198, 166, 150], 140, jitter=3),
+            "lower_right_cheek": make_pixels([222, 170, 154], 140, jitter=3),
+            "below_lips": make_pixels([199, 167, 151], 140, jitter=3),
+            "chin": make_pixels([174, 143, 130], 140, jitter=3),
+        }
+
+        summary = summarize_skin_regions(regions)
+        shadow_lab = rgb_pixels_to_lab([[174, 143, 130]])[0]
+
+        self.assertIn("chin", summary.excluded_region_names)
+        self.assertNotIn("lower_right_cheek", summary.excluded_region_names)
+        self.assertGreater(summary.final_lab[0], shadow_lab[0] + 5.0)
 
     def test_region_summary_excludes_isolated_red_outlier(self) -> None:
         regions = {

@@ -231,10 +231,20 @@ def _background_relative_component_mask(
     if not candidates:
         return None
 
+    candidates_with_lightness = [
+        (component, float(np.median(working_lab[component.mask][:, 0])))
+        for component in candidates
+    ]
+    # In dim captures the ColorChecker body can dominate the non-background mask
+    # if checker detection fails. Prefer any visible swatch-like component over
+    # near-black card components.
+    visible_candidates = [
+        item for item in candidates_with_lightness if item[1] >= 18.0
+    ]
     best = max(
-        candidates,
-        key=lambda component: component.area * min(component.fill_ratio, 1.0),
-    )
+        visible_candidates or candidates_with_lightness,
+        key=lambda item: item[0].area * min(item[0].fill_ratio, 1.0),
+    )[0]
     return best.mask
 
 

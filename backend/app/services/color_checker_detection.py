@@ -227,7 +227,19 @@ def _build_dark_card_mask(image_rgb: np.ndarray) -> np.ndarray:
     rgb = image_rgb.astype(np.float64)
     luma = rgb[..., 0] * 0.2126 + rgb[..., 1] * 0.7152 + rgb[..., 2] * 0.0722
     channel_spread = np.max(rgb, axis=2) - np.min(rgb, axis=2)
-    dark = (luma < 85) | ((luma < 125) & (channel_spread < 35))
+    scene_median = float(np.percentile(luma, 50))
+    if scene_median < 115:
+        dark_threshold = max(18.0, min(85.0, scene_median - 22.0))
+    else:
+        dark_threshold = 85.0
+
+    neutral_threshold = min(
+        125.0,
+        max(dark_threshold + 8.0, float(np.percentile(luma, 25)) - 8.0),
+    )
+    dark = (luma < dark_threshold) | (
+        (luma < neutral_threshold) & (channel_spread < 35)
+    )
     return _binary_erosion(_binary_dilation(dark, iterations=2), iterations=1)
 
 

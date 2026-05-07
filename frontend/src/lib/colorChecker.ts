@@ -252,6 +252,9 @@ function erodeMask(mask: Uint8Array, width: number, height: number): Uint8Array 
 
 function buildDarkCardMask(data: Uint8ClampedArray, width: number, height: number) {
   const mask = new Uint8Array(width * height);
+  const lumas: number[] = [];
+  const pixelLumas = new Float64Array(width * height);
+  const channelSpreads = new Float64Array(width * height);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -262,8 +265,30 @@ function buildDarkCardMask(data: Uint8ClampedArray, width: number, height: numbe
       const luma = red * 0.2126 + green * 0.7152 + blue * 0.0722;
       const channelSpread =
         Math.max(red, green, blue) - Math.min(red, green, blue);
+      const pixelIndex = y * width + x;
+      pixelLumas[pixelIndex] = luma;
+      channelSpreads[pixelIndex] = channelSpread;
+      lumas.push(luma);
+    }
+  }
+
+  const sceneMedian = quantile(lumas, 0.5);
+  const darkThreshold =
+    sceneMedian < 115 ? Math.max(18, Math.min(85, sceneMedian - 22)) : 85;
+  const neutralThreshold = Math.min(
+    125,
+    Math.max(darkThreshold + 8, quantile(lumas, 0.25) - 8),
+  );
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const pixelIndex = y * width + x;
+      const luma = pixelLumas[pixelIndex];
+      const channelSpread = channelSpreads[pixelIndex];
       mask[y * width + x] =
-        luma < 85 || (luma < 125 && channelSpread < 35) ? 1 : 0;
+        luma < darkThreshold || (luma < neutralThreshold && channelSpread < 35)
+          ? 1
+          : 0;
     }
   }
 
@@ -341,25 +366,12 @@ function geometryFromComponent(points: DetectionPoint[]): CandidateGeometry | nu
   meanX /= points.length;
   meanY /= points.length;
 
-  let covXX = 0;
-  let covXY = 0;
-  let covYY = 0;
-  for (const point of points) {
-    const dx = point.x - meanX;
-    const dy = point.y - meanY;
-    covXX += dx * dx;
-    covXY += dx * dy;
-    covYY += dy * dy;
-  }
-  covXX /= points.length;
-  covXY /= points.length;
-  covYY /= points.length;
-
-  const angle = 0.5 * Math.atan2(2 * covXY, covXX - covYY);
-  const uX = Math.cos(angle);
-  const uY = Math.sin(angle);
-  const vX = -uY;
-  const vY = uX;
+  const axes = principalAxes(points);
+  if (!axes) return null;
+  const uX = axes[0].x;
+  const uY = axes[0].y;
+  const vX = axes[1].x;
+  const vY = axes[1].y;
 
   let minU = Number.POSITIVE_INFINITY;
   let maxU = Number.NEGATIVE_INFINITY;
@@ -907,28 +919,19 @@ function homographyFromCorrespondences(
     return null;
   }
 
-  const normalMatrix = Array.from({ length: 8 }, () => Array(8).fill(0));
-  const normalVector = Array(8).fill(0);
+  const matrix: number[][] = [];
+  const vector: number[] = [];
 
   sourcePoints.forEach(([u, v], index) => {
     const { x, y } = targetPoints[index];
-    const rows = [
+    matrix.push(
       [u, v, 1, 0, 0, 0, -x * u, -x * v],
       [0, 0, 0, u, v, 1, -y * u, -y * v],
-    ];
-    const values = [x, y];
-
-    rows.forEach((row, rowIndex) => {
-      for (let i = 0; i < 8; i++) {
-        normalVector[i] += row[i] * values[rowIndex];
-        for (let j = 0; j < 8; j++) {
-          normalMatrix[i][j] += row[i] * row[j];
-        }
-      }
-    });
+    );
+    vector.push(x, y);
   });
 
-  const solution = solveLinearSystem(normalMatrix, normalVector);
+  const solution = solveLinearSystem(matrix, vector);
   if (!solution) return null;
 
   return [
@@ -1459,7 +1462,10 @@ function fitGridAxisClustered(
   if (clusteredCenters.length > 12) {
     const keepIndexes = clusteredWeights
       .map((weight, index) => ({ weight, index }))
-      .sort((left, right) => right.weight - left.weight)
+      .sort(
+        (left, right) =>
+          right.weight - left.weight || right.index - left.index,
+      )
       .slice(0, 12)
       .map(({ index }) => index)
       .sort((left, right) => left - right);
@@ -1467,7 +1473,7 @@ function fitGridAxisClustered(
     clusteredWeights = keepIndexes.map((index) => clusteredWeights[index]);
   }
 
-  const minimumAssignments = Math.max(3, count - 2);
+  const minimumAssignments = Math.max(3, count - 3);
   if (clusteredCenters.length < minimumAssignments) return null;
 
   let bestScore: [number, number, number, number] | null = null;
@@ -1617,10 +1623,33 @@ function principalAxes(points: DetectionPoint[]): [DetectionPoint, DetectionPoin
   covXY /= points.length;
   covYY /= points.length;
 
-  const angle = 0.5 * Math.atan2(2 * covXY, covXX - covYY);
-  const first = { x: Math.cos(angle), y: Math.sin(angle) };
-  const second = { x: -first.y, y: first.x };
+  const trace = covXX + covYY;
+  const spread = Math.hypot(covXX - covYY, 2 * covXY);
+  const firstEigenvalue = (trace + spread) / 2;
+  const secondEigenvalue = (trace - spread) / 2;
+  const first = normalizedEigenvector(covXX, covXY, covYY, firstEigenvalue);
+  const second = normalizedEigenvector(covXX, covXY, covYY, secondEigenvalue);
   return [first, second];
+}
+
+function normalizedEigenvector(
+  covXX: number,
+  covXY: number,
+  covYY: number,
+  eigenvalue: number,
+): DetectionPoint {
+  let x = covXY;
+  let y = eigenvalue - covXX;
+  if (Math.hypot(x, y) < 1e-8) {
+    x = eigenvalue - covYY;
+    y = covXY;
+  }
+  if (Math.hypot(x, y) < 1e-8) {
+    return covXX >= covYY ? { x: 1, y: 0 } : { x: 0, y: 1 };
+  }
+
+  const length = Math.hypot(x, y);
+  return { x: x / length, y: y / length };
 }
 
 function dotPoint(point: DetectionPoint, axis: DetectionPoint): number {
@@ -1628,6 +1657,23 @@ function dotPoint(point: DetectionPoint, axis: DetectionPoint): number {
 }
 
 function fitPatchGridFromCandidates(
+  candidates: PatchGridCandidate[],
+): PatchGridFit | null {
+  if (candidates.length < MIN_PATCH_GRID_PAIRS) return null;
+
+  const medianArea = median(candidates.map((candidate) => candidate.area));
+  const filteredCandidates = candidates.filter(
+    (candidate) => candidate.area >= medianArea * 0.4,
+  );
+
+  const filteredFit =
+    filteredCandidates.length >= MIN_PATCH_GRID_PAIRS
+      ? fitPatchGridFromUsableCandidates(filteredCandidates)
+      : null;
+  return filteredFit ?? fitPatchGridFromUsableCandidates(candidates);
+}
+
+function fitPatchGridFromUsableCandidates(
   candidates: PatchGridCandidate[],
 ): PatchGridFit | null {
   if (candidates.length < MIN_PATCH_GRID_PAIRS) return null;
@@ -1673,8 +1719,12 @@ function fitPatchGridFromCandidates(
       const vAxis = swapAxes ? axes[0] : axes[1];
       const projectedU = centers.map((center) => dotPoint(center, uAxis));
       const projectedV = centers.map((center) => dotPoint(center, vAxis));
-      const uCenters = fitGridAxisClustered(projectedU, 6, stepRange, clusterGap);
-      const vCenters = fitGridAxisClustered(projectedV, 4, stepRange, clusterGap);
+      const uCenters =
+        fitGridAxisClustered(projectedU, 6, stepRange, clusterGap) ??
+        fitGridAxisAbsolute(projectedU, 6, stepRange);
+      const vCenters =
+        fitGridAxisClustered(projectedV, 4, stepRange, clusterGap) ??
+        fitGridAxisAbsolute(projectedV, 4, stepRange);
       if (!uCenters || !vCenters) continue;
 
       const uStep = median(
@@ -1693,6 +1743,71 @@ function fitPatchGridFromCandidates(
         const uResidual = Math.abs(projectedU[index] - uCenters[uLabel]);
         const vResidual = Math.abs(projectedV[index] - vCenters[vLabel]);
         if (uResidual >= uStep * 0.35 || vResidual >= vStep * 0.35) {
+          continue;
+        }
+
+        acceptedPairs.add(`${uLabel}:${vLabel}`);
+        residualTotal += uResidual * uResidual + vResidual * vResidual;
+        acceptedCount++;
+      }
+
+      const pairCount = acceptedPairs.size;
+      if (pairCount < MIN_PATCH_GRID_PAIRS || acceptedCount === 0) continue;
+
+      const residualMean = residualTotal / acceptedCount;
+      if (
+        pairCount > bestPairCount ||
+        (pairCount === bestPairCount && residualMean < bestResidual)
+      ) {
+        bestPairCount = pairCount;
+        bestResidual = residualMean;
+        bestFit = {
+          uAxis,
+          vAxis,
+          uCenters,
+          vCenters,
+          pairCount,
+          residualMean,
+        };
+      }
+    }
+  }
+
+  if (!bestFit) {
+    const axisPairs: [DetectionPoint, DetectionPoint][] = [
+      [{ x: 0, y: 1 }, { x: 1, y: 0 }],
+      [{ x: 0, y: -1 }, { x: 1, y: 0 }],
+      [{ x: 1, y: 0 }, { x: 0, y: 1 }],
+      [{ x: -1, y: 0 }, { x: 0, y: 1 }],
+    ];
+
+    for (const [uAxis, vAxis] of axisPairs) {
+      const projectedU = centers.map((center) => dotPoint(center, uAxis));
+      const projectedV = centers.map((center) => dotPoint(center, vAxis));
+      const uCenters =
+        fitGridAxisClustered(projectedU, 6, stepRange, clusterGap) ??
+        fitGridAxisAbsolute(projectedU, 6, stepRange);
+      const vCenters =
+        fitGridAxisClustered(projectedV, 4, stepRange, clusterGap) ??
+        fitGridAxisAbsolute(projectedV, 4, stepRange);
+      if (!uCenters || !vCenters) continue;
+
+      const uStep = median(
+        uCenters.slice(1).map((center, index) => center - uCenters[index]),
+      );
+      const vStep = median(
+        vCenters.slice(1).map((center, index) => center - vCenters[index]),
+      );
+      const acceptedPairs = new Set<string>();
+      let residualTotal = 0;
+      let acceptedCount = 0;
+
+      for (let index = 0; index < centers.length; index++) {
+        const uLabel = closestIndex(projectedU[index], uCenters);
+        const vLabel = closestIndex(projectedV[index], vCenters);
+        const uResidual = Math.abs(projectedU[index] - uCenters[uLabel]);
+        const vResidual = Math.abs(projectedV[index] - vCenters[vLabel]);
+        if (uResidual >= uStep * 0.42 || vResidual >= vStep * 0.42) {
           continue;
         }
 

@@ -26,8 +26,9 @@ from app.utils.color_math import (
 
 _MIN_CORRECTED_LUMINANCE_RATIO = 0.98
 _SKIN_CORRECTION_STRENGTH = 0.55
-_REGION_REDNESS_TRIM_PERCENTILE = 72.0
-_REGION_RED_OUTLIER_DELTA = 3.5
+_REGION_REDNESS_TRIM_PERCENTILE = 90.0
+_REGION_RED_OUTLIER_DELTA = 10.0
+_REGION_SHADOW_OUTLIER_DELTA = 4.0
 
 
 @dataclass
@@ -310,7 +311,7 @@ def select_balanced_skin_lab(
     region_representatives: dict[str, np.ndarray],
     valid_region_names: list[str],
 ) -> tuple[np.ndarray, list[str]]:
-    """Select a representative skin LAB while ignoring isolated red outliers."""
+    """Select a representative skin LAB while ignoring red and shadow outliers."""
     valid_pairs = [
         (region_name, region_representatives[region_name])
         for region_name in valid_region_names
@@ -320,12 +321,14 @@ def select_balanced_skin_lab(
     if len(valid_labs) < 3:
         return select_medoid_lab(valid_labs), []
 
-    a_values = np.array([lab[1] for lab in valid_labs], dtype=np.float64)
+    selected_pairs, excluded_names = _exclude_shadow_outliers(valid_pairs)
+
+    if len(selected_pairs) < 3:
+        return select_medoid_lab([lab for _, lab in selected_pairs]), excluded_names
+
+    a_values = np.array([lab[1] for _, lab in selected_pairs], dtype=np.float64)
     median_a = float(np.median(a_values))
     max_a = float(np.max(a_values))
-    excluded_names: list[str] = []
-    selected_pairs = valid_pairs
-
     if max_a - median_a >= _REGION_RED_OUTLIER_DELTA:
         cutoff = min(
             float(np.percentile(a_values, 75)),
@@ -333,18 +336,44 @@ def select_balanced_skin_lab(
         )
         lower_red_pairs = [
             (region_name, lab)
-            for region_name, lab in valid_pairs
+            for region_name, lab in selected_pairs
             if lab[1] <= cutoff
         ]
         if len(lower_red_pairs) >= 2:
-            selected_pairs = lower_red_pairs
-            excluded_names = [
+            red_excluded_names = [
                 region_name
-                for region_name, lab in valid_pairs
+                for region_name, lab in selected_pairs
                 if lab[1] > cutoff
             ]
+            selected_pairs = lower_red_pairs
+            excluded_names += red_excluded_names
 
     return select_medoid_lab([lab for _, lab in selected_pairs]), excluded_names
+
+
+def _exclude_shadow_outliers(
+    region_pairs: list[tuple[str, np.ndarray]],
+) -> tuple[list[tuple[str, np.ndarray]], list[str]]:
+    if len(region_pairs) < 3:
+        return region_pairs, []
+
+    lightness_values = np.array([lab[0] for _, lab in region_pairs], dtype=np.float64)
+    cutoff = float(np.median(lightness_values) - _REGION_SHADOW_OUTLIER_DELTA)
+    filtered_pairs = [
+        (region_name, lab)
+        for region_name, lab in region_pairs
+        if lab[0] >= cutoff
+    ]
+
+    if len(filtered_pairs) < 2:
+        return region_pairs, []
+
+    excluded_names = [
+        region_name
+        for region_name, lab in region_pairs
+        if lab[0] < cutoff
+    ]
+    return filtered_pairs, excluded_names
 
 
 def _max_pairwise_delta_e(region_labs: list[np.ndarray]) -> float | None:
@@ -488,7 +517,7 @@ def build_confidence_summary(
         if region_summary.excluded_region_names:
             score -= 0.06
             notes.append(
-                "홍조/입술색 영향이 큰 ROI 제외: "
+                "홍조/그림자 영향이 큰 ROI 제외: "
                 + ", ".join(region_summary.excluded_region_names)
             )
 
