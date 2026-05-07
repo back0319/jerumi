@@ -59,12 +59,28 @@ export function AdminPhotoAnalysisForm({
   onClose,
 }: AdminPhotoAnalysisFormProps) {
   return (
-    <div className="mb-6 rounded-xl bg-white p-4 shadow-sm sm:p-5">
-      <h2 className="mb-3 text-lg font-semibold">사진으로 색상 추출</h2>
-      <p className="mb-4 text-sm text-gray-500">
-        흰 종이에 바른 파운데이션과 컬러체커가 함께 보이도록 촬영한 사진을
-        올리세요.
-      </p>
+    <div
+      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="relative w-full max-w-4xl rounded-xl bg-white p-4 shadow-xl sm:p-5">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          aria-label="닫기"
+        >
+          ✕
+        </button>
+        <h2 className="mb-3 pr-8 text-lg font-semibold">사진으로 색상 추출</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          흰 종이에 바른 파운데이션과 컬러체커가 함께 보이도록 촬영한 사진을
+          올리세요.
+        </p>
 
       {photoError && (
         <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -348,6 +364,7 @@ export function AdminPhotoAnalysisForm({
         >
           닫기
         </button>
+      </div>
       </div>
     </div>
   );

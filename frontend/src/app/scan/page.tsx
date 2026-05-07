@@ -119,11 +119,32 @@ export default function ScanPage() {
     skin_regions_rgb: ReturnType<typeof downsampleSkinRegions> | null;
     checker_patches: ReturnType<typeof buildCheckerPatchesFromDetection>;
   } | null>(null);
-  const visibleRecommendations = result
-    ? showAllRecommendations
-      ? result.recommendations
-      : result.recommendations.slice(0, INITIAL_VISIBLE_RECOMMENDATIONS)
+  const recommendationBrands = result
+    ? Array.from(new Set(result.recommendations.map((r) => r.brand))).sort()
     : [];
+  const productsForComparisonBrand =
+    comparisonBrand && comparisonResult
+      ? Array.from(
+          new Set(
+            comparisonResult
+              .map((r) => r.product_name)
+              .filter((p): p is string => Boolean(p)),
+          ),
+        ).sort()
+      : [];
+  const filterIsActive = Boolean(comparisonBrand);
+  const baseRecommendationList: RecommendationItem[] = filterIsActive
+    ? comparisonResult
+      ? comparisonProduct
+        ? comparisonResult.filter((r) => r.product_name === comparisonProduct)
+        : comparisonResult
+      : []
+    : (result?.recommendations ?? []);
+  const visibleRecommendations = filterIsActive
+    ? baseRecommendationList
+    : showAllRecommendations
+      ? baseRecommendationList
+      : baseRecommendationList.slice(0, INITIAL_VISIBLE_RECOMMENDATIONS);
   const checkerPatchCount = detectedChecker?.patches.length ?? 0;
   const checkerConfidence = detectedChecker
     ? Math.round(detectedChecker.confidence * 100)
@@ -1053,167 +1074,92 @@ export default function ScanPage() {
             </div>
           </div>
 
-          {/* Brand/product comparison */}
-          {(() => {
-            const recommendationBrands = Array.from(
-              new Set(result.recommendations.map((r) => r.brand)),
-            ).sort();
-            const productsForBrand = comparisonResult
-              ? Array.from(
-                  new Set(
-                    comparisonResult
-                      .map((r) => r.product_name)
-                      .filter((p): p is string => Boolean(p)),
-                  ),
-                ).sort()
-              : [];
-            const filteredShades = comparisonResult
-              ? comparisonProduct
-                ? comparisonResult.filter(
-                    (r) => r.product_name === comparisonProduct,
-                  )
-                : comparisonResult
-              : [];
-            return (
-              <div className="mb-4 rounded-xl bg-white p-4 shadow-sm sm:p-5">
-                <div className="mb-3 flex flex-col gap-1">
-                  <h2 className="text-lg font-semibold">
-                    브랜드 · 제품별 호수 비교
-                  </h2>
-                  <p className="text-sm text-gray-500">
-                    특정 브랜드와 제품을 골라 그 라인 안의 호수들과 내 피부색을
-                    한눈에 비교합니다.
-                  </p>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <select
-                    value={comparisonBrand ?? ""}
-                    onChange={(event) =>
-                      void handleSelectComparisonBrand(
-                        event.target.value || null,
-                      )
-                    }
-                    className="rounded border px-3 py-2 text-sm"
-                  >
-                    <option value="">브랜드 선택…</option>
-                    {recommendationBrands.map((brand) => (
-                      <option key={brand} value={brand}>
-                        {brand}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={comparisonProduct ?? ""}
-                    onChange={(event) =>
-                      setComparisonProduct(event.target.value || null)
-                    }
-                    disabled={!comparisonResult || productsForBrand.length === 0}
-                    className="rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400"
-                  >
-                    <option value="">전체 제품</option>
-                    {productsForBrand.map((product) => (
-                      <option key={product} value={product}>
-                        {product}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {comparisonError && (
-                  <p className="mt-3 text-sm text-red-600">
-                    {comparisonError}
-                  </p>
-                )}
-
-                {comparisonLoading && (
-                  <p className="mt-3 text-sm text-gray-500">
-                    {comparisonBrand} 호수를 불러오는 중입니다...
-                  </p>
-                )}
-
-                {!comparisonLoading &&
-                  comparisonBrand &&
-                  comparisonResult &&
-                  filteredShades.length === 0 && (
-                    <p className="mt-3 text-sm text-gray-500">
-                      해당 조건에 맞는 호수가 없습니다.
-                    </p>
-                  )}
-
-                {filteredShades.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center gap-3 rounded-lg bg-gray-50 p-2">
-                      <div
-                        className="aspect-square w-10 shrink-0 rounded-md border shadow-inner"
-                        style={{ backgroundColor: result.skin_hex }}
-                      />
-                      <div className="text-xs">
-                        <p className="font-semibold text-gray-700">내 피부색</p>
-                        <p className="font-mono text-gray-500">
-                          {result.skin_hex}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {filteredShades.map((shade) => (
-                        <div
-                          key={shade.id}
-                          className="flex items-center gap-3 rounded-lg border bg-white p-2"
-                        >
-                          <div
-                            className="aspect-square w-12 shrink-0 rounded-md border shadow-inner"
-                            style={{ backgroundColor: shade.hex_color }}
-                          />
-                          <div className="min-w-0 flex-1 text-xs">
-                            <p className="truncate font-semibold text-gray-800">
-                              {displayShade(shade)}
-                            </p>
-                            {shade.product_name && (
-                              <p className="truncate text-[11px] text-gray-500">
-                                {shade.product_name}
-                              </p>
-                            )}
-                            <p className="mt-0.5 font-mono text-[11px] text-gray-500">
-                              ΔE={shade.delta_e}
-                            </p>
-                          </div>
-                          <span
-                            className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${getDeltaEBadgeClass(
-                              shade.delta_e,
-                            )}`}
-                          >
-                            {shade.delta_e_category}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
           {/* Recommendations */}
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold">추천 결과</h2>
               <p className="mt-1 text-sm text-gray-500">
-                기본으로 상위 {INITIAL_VISIBLE_RECOMMENDATIONS}개만 보여주고
-                필요하면 전체를 펼칩니다.
+                {filterIsActive
+                  ? "선택한 브랜드/제품의 호수를 ΔE 오름차순으로 보여줍니다."
+                  : `기본으로 상위 ${INITIAL_VISIBLE_RECOMMENDATIONS}개만 보여주고 필요하면 전체를 펼칩니다.`}
               </p>
             </div>
-            {result.recommendations.length >
-              INITIAL_VISIBLE_RECOMMENDATIONS && (
+            {!filterIsActive &&
+              result.recommendations.length >
+                INITIAL_VISIBLE_RECOMMENDATIONS && (
+                <button
+                  onClick={() => setShowAllRecommendations((prev) => !prev)}
+                  className="text-sm font-medium text-rose-600 hover:text-rose-700"
+                >
+                  {showAllRecommendations
+                    ? "상위 추천만 보기"
+                    : `전체 ${result.recommendations.length}개 보기`}
+                </button>
+              )}
+          </div>
+
+          <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            <select
+              value={comparisonBrand ?? ""}
+              onChange={(event) =>
+                void handleSelectComparisonBrand(event.target.value || null)
+              }
+              className="rounded border px-3 py-2 text-sm"
+            >
+              <option value="">브랜드: 전체 추천</option>
+              {recommendationBrands.map((brand) => (
+                <option key={brand} value={brand}>
+                  {brand}
+                </option>
+              ))}
+            </select>
+            <select
+              value={comparisonProduct ?? ""}
+              onChange={(event) =>
+                setComparisonProduct(event.target.value || null)
+              }
+              disabled={
+                !comparisonBrand ||
+                !comparisonResult ||
+                productsForComparisonBrand.length === 0
+              }
+              className="rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            >
+              <option value="">제품: 전체</option>
+              {productsForComparisonBrand.map((product) => (
+                <option key={product} value={product}>
+                  {product}
+                </option>
+              ))}
+            </select>
+            {filterIsActive && (
               <button
-                onClick={() => setShowAllRecommendations((prev) => !prev)}
-                className="text-sm font-medium text-rose-600 hover:text-rose-700"
+                type="button"
+                onClick={() => void handleSelectComparisonBrand(null)}
+                className="rounded border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
               >
-                {showAllRecommendations
-                  ? "상위 추천만 보기"
-                  : `전체 ${result.recommendations.length}개 보기`}
+                필터 해제
               </button>
             )}
           </div>
+
+          {comparisonError && (
+            <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {comparisonError}
+            </div>
+          )}
+          {comparisonLoading && (
+            <p className="mb-3 text-sm text-gray-500">
+              {comparisonBrand} 호수를 불러오는 중입니다...
+            </p>
+          )}
+          {filterIsActive &&
+            !comparisonLoading &&
+            visibleRecommendations.length === 0 && (
+              <p className="mb-3 text-sm text-gray-500">
+                해당 조건에 맞는 호수가 없습니다.
+              </p>
+            )}
           <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
             <p className="text-sm font-semibold text-gray-800">
               CIEDE2000 색차(ΔE) 해석 기준
