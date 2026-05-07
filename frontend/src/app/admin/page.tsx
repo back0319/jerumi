@@ -61,9 +61,12 @@ export default function AdminPage() {
           setActivePanel((current) => (current === "roi" ? "none" : "roi"));
         }}
         onTogglePhotoForm={() => {
-          setActivePanel((current) => (current === "photo" ? "none" : "photo"));
+          setActivePanel((current) => {
+            if (current === "photo") return "none";
+            foundationWorkflow.manual.resetCreateState();
+            return "photo";
+          });
         }}
-        onToggleManualCreateForm={foundationWorkflow.manual.toggleCreatePanel}
       />
 
       {foundationWorkflow.foundations.listError && (
@@ -106,8 +109,12 @@ export default function AdminPage() {
           candidates={photoWorkflow.candidates}
           primaryId={photoWorkflow.primaryId}
           deltaStats={photoWorkflow.deltaStats}
+          manualForm={foundationWorkflow.manual.form}
+          isSavingManual={foundationWorkflow.manual.isSavingManual}
           onSetPrimary={photoWorkflow.setPrimary}
           onPhotoMetaFieldChange={photoWorkflow.updatePhotoMetaField}
+          onManualFieldChange={foundationWorkflow.manual.updateManualField}
+          onManualSubmit={foundationWorkflow.manual.handleManualSubmit}
           onPhotoUpload={photoWorkflow.handlePhotoUpload}
           onPhotoImageLoad={photoWorkflow.handlePhotoImageLoad}
           onAnalyze={() => void photoWorkflow.analyzeSwatch()}
@@ -117,7 +124,7 @@ export default function AdminPage() {
         />
       )}
 
-      {foundationWorkflow.manual.isOpen && (
+      {activePanel === "manual-edit" && (
         <AdminManualFoundationForm
           editingFoundationId={foundationWorkflow.manual.editingFoundationId}
           form={foundationWorkflow.manual.form}

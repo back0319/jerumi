@@ -1,10 +1,13 @@
-import type { RefObject } from "react";
+import { useState, type FormEvent, type RefObject } from "react";
 
 import type {
   FoundationAnalysisResult,
   FoundationDetectionResult,
 } from "@/types";
-import type { PhotoMetaValues } from "@/components/admin/types";
+import type {
+  ManualFoundationFormValues,
+  PhotoMetaValues,
+} from "@/components/admin/types";
 import type {
   CandidateDeltaStats,
   PhotoCandidate,
@@ -23,11 +26,18 @@ type AdminPhotoAnalysisFormProps = {
   candidates: PhotoCandidate[];
   primaryId: string | null;
   deltaStats: CandidateDeltaStats | null;
+  manualForm: ManualFoundationFormValues;
+  isSavingManual: boolean;
   onSetPrimary: (id: string) => void;
   onPhotoMetaFieldChange: <Key extends keyof PhotoMetaValues>(
     key: Key,
     value: PhotoMetaValues[Key],
   ) => void;
+  onManualFieldChange: <Key extends keyof ManualFoundationFormValues>(
+    key: Key,
+    value: ManualFoundationFormValues[Key],
+  ) => void;
+  onManualSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onPhotoUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onPhotoImageLoad: () => void;
   onAnalyze: () => void;
@@ -49,8 +59,12 @@ export function AdminPhotoAnalysisForm({
   candidates,
   primaryId,
   deltaStats,
+  manualForm,
+  isSavingManual,
   onSetPrimary,
   onPhotoMetaFieldChange,
+  onManualFieldChange,
+  onManualSubmit,
   onPhotoUpload,
   onPhotoImageLoad,
   onAnalyze,
@@ -58,6 +72,7 @@ export function AdminPhotoAnalysisForm({
   onReset,
   onClose,
 }: AdminPhotoAnalysisFormProps) {
+  const [mode, setMode] = useState<"photo" | "manual">("photo");
   return (
     <div
       className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
@@ -76,7 +91,42 @@ export function AdminPhotoAnalysisForm({
         >
           ✕
         </button>
-        <h2 className="mb-3 pr-8 text-lg font-semibold">사진으로 색상 추출</h2>
+        <h2 className="mb-3 pr-8 text-lg font-semibold">파운데이션 등록</h2>
+
+        <div className="mb-4 inline-flex rounded-lg border bg-gray-100 p-1 text-sm">
+          <button
+            type="button"
+            onClick={() => setMode("photo")}
+            className={`rounded-md px-3 py-1.5 transition ${
+              mode === "photo"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            사진으로
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("manual")}
+            className={`rounded-md px-3 py-1.5 transition ${
+              mode === "manual"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            직접 입력
+          </button>
+        </div>
+
+        {mode === "manual" ? (
+          <ManualEntryPanel
+            form={manualForm}
+            isSaving={isSavingManual}
+            onFieldChange={onManualFieldChange}
+            onSubmit={onManualSubmit}
+          />
+        ) : (
+          <>
         <p className="mb-4 text-sm text-gray-500">
           흰 종이에 바른 파운데이션과 컬러체커가 함께 보이도록 촬영한 사진을
           올리세요.
@@ -348,15 +398,13 @@ export function AdminPhotoAnalysisForm({
           </button>
         )}
         {analysisResult && (
-          <>
-            <button
-              onClick={onSave}
-              disabled={isSavingPhoto}
-              className="rounded bg-green-600 px-5 py-2 text-sm text-white hover:bg-green-700"
-            >
-              {isSavingPhoto ? "저장 중..." : "DB에 저장"}
-            </button>
-          </>
+          <button
+            onClick={onSave}
+            disabled={isSavingPhoto}
+            className="rounded bg-green-600 px-5 py-2 text-sm text-white hover:bg-green-700"
+          >
+            {isSavingPhoto ? "저장 중..." : "DB에 저장"}
+          </button>
         )}
         <button
           onClick={onClose}
@@ -365,7 +413,107 @@ export function AdminPhotoAnalysisForm({
           닫기
         </button>
       </div>
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+type ManualEntryPanelProps = {
+  form: ManualFoundationFormValues;
+  isSaving: boolean;
+  onFieldChange: <Key extends keyof ManualFoundationFormValues>(
+    key: Key,
+    value: ManualFoundationFormValues[Key],
+  ) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+function ManualEntryPanel({
+  form,
+  isSaving,
+  onFieldChange,
+  onSubmit,
+}: ManualEntryPanelProps) {
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+    >
+      <input
+        placeholder="브랜드 *"
+        value={form.brand}
+        onChange={(event) => onFieldChange("brand", event.target.value)}
+        className="rounded border px-3 py-2 text-sm"
+        required
+      />
+      <input
+        placeholder="제품명"
+        value={form.product_name}
+        onChange={(event) => onFieldChange("product_name", event.target.value)}
+        className="rounded border px-3 py-2 text-sm"
+      />
+      <input
+        placeholder="색상명/호수 * (예: 21호 / Vanilla 1.5)"
+        value={form.shade_name}
+        onChange={(event) => onFieldChange("shade_name", event.target.value)}
+        className="rounded border px-3 py-2 text-sm sm:col-span-2 xl:col-span-1"
+        required
+      />
+      <input
+        placeholder="L* 값"
+        type="number"
+        step="0.01"
+        value={form.L_value}
+        onChange={(event) =>
+          onFieldChange("L_value", parseFloat(event.target.value) || 0)
+        }
+        className="rounded border px-3 py-2 text-sm"
+      />
+      <input
+        placeholder="a* 값"
+        type="number"
+        step="0.01"
+        value={form.a_value}
+        onChange={(event) =>
+          onFieldChange("a_value", parseFloat(event.target.value) || 0)
+        }
+        className="rounded border px-3 py-2 text-sm"
+      />
+      <input
+        placeholder="b* 값"
+        type="number"
+        step="0.01"
+        value={form.b_value}
+        onChange={(event) =>
+          onFieldChange("b_value", parseFloat(event.target.value) || 0)
+        }
+        className="rounded border px-3 py-2 text-sm"
+      />
+      <input
+        placeholder="HEX (#ff0000)"
+        value={form.hex_color}
+        onChange={(event) => onFieldChange("hex_color", event.target.value)}
+        className="rounded border px-3 py-2 text-sm"
+      />
+      <select
+        value={form.undertone}
+        onChange={(event) => onFieldChange("undertone", event.target.value)}
+        className="rounded border px-3 py-2 text-sm"
+      >
+        <option value="">언더톤 비워두기</option>
+        <option value="WARM">Warm</option>
+        <option value="COOL">Cool</option>
+        <option value="NEUTRAL">Neutral</option>
+      </select>
+      <button
+        type="submit"
+        disabled={isSaving}
+        className="rounded bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:opacity-50"
+      >
+        {isSaving ? "저장 중..." : "저장"}
+      </button>
+    </form>
   );
 }

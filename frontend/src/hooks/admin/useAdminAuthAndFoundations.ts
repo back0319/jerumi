@@ -166,6 +166,11 @@ export function useAdminAuthAndFoundations({
     setActivePanel("manual-create");
   }, [activePanel, setActivePanel]);
 
+  const resetCreateState = useCallback(() => {
+    setEditingFoundationId(null);
+    setManualForm(createDefaultManualForm());
+  }, []);
+
   const openEditPanel = useCallback(
     (foundation: Foundation) => {
       setEditingFoundationId(foundation.id);
@@ -318,6 +323,7 @@ export function useAdminAuthAndFoundations({
       isCreateOpen: activePanel === "manual-create",
       isSavingManual,
       toggleCreatePanel,
+      resetCreateState,
       openEditPanel,
       closeManualPanel,
       updateManualField,

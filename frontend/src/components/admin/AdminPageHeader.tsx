@@ -9,7 +9,6 @@ type AdminPageHeaderProps = {
   onRefresh: () => void;
   onToggleRoiTool: () => void;
   onTogglePhotoForm: () => void;
-  onToggleManualCreateForm: () => void;
 };
 
 export function AdminPageHeader({
@@ -21,7 +20,6 @@ export function AdminPageHeader({
   onRefresh,
   onToggleRoiTool,
   onTogglePhotoForm,
-  onToggleManualCreateForm,
 }: AdminPageHeaderProps) {
   return (
     <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -68,17 +66,7 @@ export function AdminPageHeader({
               : "bg-indigo-600 hover:bg-indigo-700"
           }`}
         >
-          사진 등록
-        </button>
-        <button
-          onClick={onToggleManualCreateForm}
-          className={`rounded px-4 py-1.5 text-sm text-white ${
-            activePanel === "manual-create"
-              ? "bg-rose-700"
-              : "bg-rose-600 hover:bg-rose-700"
-          }`}
-        >
-          + 직접 등록
+          + 등록
         </button>
       </div>
     </div>
