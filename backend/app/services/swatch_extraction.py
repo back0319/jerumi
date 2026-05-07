@@ -433,6 +433,14 @@ def extract_swatch_from_image(
         float(mean_lab[2]),
     )
 
+    confidence = _build_swatch_confidence(
+        checker_detection=checker_detection,
+        correction_applied=correction is not None,
+        correction_source=correction_source,
+        swatch_pixel_count=int(len(swatch_pixels_rgb)),
+        lab_array=lab_array,
+    )
+
     return {
         "L_value": round(l_value, 2),
         "a_value": round(a_value, 2),
@@ -456,4 +464,76 @@ def extract_swatch_from_image(
             "color_correction_applied": correction is not None,
             "color_correction_source": correction_source,
         },
+        "confidence": confidence,
+    }
+
+
+def _build_swatch_confidence(
+    *,
+    checker_detection: ColorCheckerDetection | None,
+    correction_applied: bool,
+    correction_source: str | None,
+    swatch_pixel_count: int,
+    lab_array: np.ndarray,
+) -> dict:
+    """Estimate confidence in the extracted swatch color."""
+    notes: list[str] = []
+
+    if checker_detection is not None:
+        checker_score = float(np.clip(checker_detection.confidence, 0.0, 1.0))
+    else:
+        checker_score = 0.35
+        notes.append("컬러체커가 감지되지 않아 보정 없이 색을 추출했습니다.")
+
+    if swatch_pixel_count >= 5000:
+        pixel_score = 1.0
+    elif swatch_pixel_count >= 2000:
+        pixel_score = 0.85
+    elif swatch_pixel_count >= 800:
+        pixel_score = 0.65
+    elif swatch_pixel_count >= 200:
+        pixel_score = 0.4
+        notes.append("샘플 픽셀이 적어 결과 변동 가능성이 있습니다.")
+    else:
+        pixel_score = 0.2
+        notes.append("샘플 픽셀이 매우 적어 색이 부정확할 수 있습니다.")
+
+    if len(lab_array) >= 20:
+        lab_std = float(np.mean(np.std(lab_array, axis=0)))
+        if lab_std <= 1.5:
+            homogeneity_score = 1.0
+        elif lab_std <= 3.0:
+            homogeneity_score = 0.85
+        elif lab_std <= 5.0:
+            homogeneity_score = 0.6
+        else:
+            homogeneity_score = 0.35
+            notes.append("샘플 영역의 색 편차가 커서 균일하지 않습니다.")
+    else:
+        homogeneity_score = 0.5
+
+    score = float(
+        np.clip(
+            0.5 * checker_score + 0.3 * pixel_score + 0.2 * homogeneity_score,
+            0.2,
+            0.99,
+        )
+    )
+
+    if correction_applied and correction_source == "manual":
+        notes.append("수동 보정 패치를 사용했습니다.")
+    elif correction_applied:
+        notes.append("자동 검출된 컬러체커로 색 보정을 적용했습니다.")
+
+    if score >= 0.85:
+        level = "높음"
+    elif score >= 0.65:
+        level = "보통"
+    else:
+        level = "낮음"
+
+    return {
+        "score": round(score, 2),
+        "level": level,
+        "notes": notes,
     }

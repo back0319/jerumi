@@ -445,13 +445,19 @@ def summarize_skin_regions(
             valid_region_names,
         )
 
+    selected_region_labs = [
+        region_representatives[region_name]
+        for region_name in valid_region_names
+        if region_name not in excluded_region_names
+    ] or valid_region_labs
+
     return RegionRepresentativeSummary(
         final_lab=final_lab,
         region_pixel_counts=region_pixel_counts,
         valid_region_names=valid_region_names,
         region_representatives=region_representatives,
         excluded_region_names=excluded_region_names,
-        max_region_delta_e=_max_pairwise_delta_e(valid_region_labs),
+        max_region_delta_e=_max_pairwise_delta_e(selected_region_labs),
     )
 
 
@@ -521,7 +527,7 @@ def build_confidence_summary(
             )
 
         if region_summary.excluded_region_names:
-            score -= 0.06
+            score -= 0.03
             notes.append(
                 "홍조/그림자 영향이 큰 ROI 제외: "
                 + ", ".join(region_summary.excluded_region_names)
@@ -529,14 +535,14 @@ def build_confidence_summary(
 
         spread = region_summary.max_region_delta_e
         if spread is not None:
-            if spread >= 8.0:
-                score -= 0.22
+            if spread >= 10.0:
+                score -= 0.14
                 notes.append("ROI 간 색 차가 커서 조명 또는 피부 편차 영향이 큽니다.")
-            elif spread >= 5.0:
-                score -= 0.12
+            elif spread >= 7.0:
+                score -= 0.08
                 notes.append("ROI 간 색 차가 다소 커서 결과 일관성이 떨어질 수 있습니다.")
-            elif spread >= 3.5:
-                score -= 0.05
+            elif spread >= 5.0:
+                score -= 0.03
                 notes.append("ROI 간 색 차가 약간 관찰됩니다.")
 
     score = float(np.clip(score, 0.25, 0.99))

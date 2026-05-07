@@ -97,6 +97,12 @@ export interface FoundationDetectionResult {
   color_correction_source: string | null;
 }
 
+export interface FoundationAnalysisConfidence {
+  score: number;
+  level: string;
+  notes: string[];
+}
+
 export interface FoundationAnalysisResult {
   L_value: number;
   a_value: number;
@@ -104,4 +110,5 @@ export interface FoundationAnalysisResult {
   hex_color: string;
   undertone: string;
   detection: FoundationDetectionResult | null;
+  confidence: FoundationAnalysisConfidence | null;
 }

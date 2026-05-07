@@ -210,7 +210,23 @@ export function AdminPhotoAnalysisForm({
 
       {analysisResult && (
         <div className="mb-4 rounded-lg bg-gray-50 p-4">
-          <h3 className="mb-3 text-sm font-semibold">추출 결과</h3>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold">추출 결과</h3>
+            {analysisResult.confidence && (
+              <span
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  analysisResult.confidence.level === "높음"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : analysisResult.confidence.level === "보통"
+                      ? "bg-sky-100 text-sky-700"
+                      : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                분석 신뢰도 {analysisResult.confidence.level} ·{" "}
+                {Math.round(analysisResult.confidence.score * 100)}%
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <div
               className="h-16 w-16 rounded-lg border shadow-inner"
@@ -227,6 +243,31 @@ export function AdminPhotoAnalysisForm({
               </p>
             </div>
           </div>
+          {analysisResult.confidence && (
+            <>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-200">
+                <div
+                  className={`h-full rounded-full ${
+                    analysisResult.confidence.level === "높음"
+                      ? "bg-emerald-500"
+                      : analysisResult.confidence.level === "보통"
+                        ? "bg-sky-500"
+                        : "bg-amber-500"
+                  }`}
+                  style={{
+                    width: `${Math.round(analysisResult.confidence.score * 100)}%`,
+                  }}
+                />
+              </div>
+              {analysisResult.confidence.notes.length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[11px] text-gray-500">
+                  {analysisResult.confidence.notes.map((note, idx) => (
+                    <li key={idx}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
         </div>
       )}
 

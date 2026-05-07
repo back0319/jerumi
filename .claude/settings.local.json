@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(python -m pytest tests/ -k \"analysis or checker\" -x --tb=short)"
+    ]
+  }
+}

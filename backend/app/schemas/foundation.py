@@ -100,6 +100,12 @@ class FoundationDetectionResult(BaseModel):
     color_correction_source: str | None = None
 
 
+class FoundationAnalysisConfidence(BaseModel):
+    score: float
+    level: str
+    notes: list[str] = []
+
+
 class FoundationAnalysisResult(BaseModel):
     L_value: float
     a_value: float
@@ -107,3 +113,4 @@ class FoundationAnalysisResult(BaseModel):
     hex_color: str
     undertone: str
     detection: FoundationDetectionResult | None = None
+    confidence: FoundationAnalysisConfidence | None = None
