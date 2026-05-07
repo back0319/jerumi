@@ -68,6 +68,22 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
 
     skin_hex = color_analysis.lab_to_hex(analysis.skin_lab)
 
+    if correction is not None:
+        try:
+            analysis_raw = color_analysis.analyze_representative_skin_color(
+                skin_pixels_rgb=req.skin_pixels_rgb,
+                skin_regions_rgb=region_payload,
+                correction_matrix=None,
+            )
+            skin_lab_raw = analysis_raw.skin_lab
+            skin_hex_raw = color_analysis.lab_to_hex(skin_lab_raw)
+        except ValueError:
+            skin_lab_raw = analysis.skin_lab
+            skin_hex_raw = skin_hex
+    else:
+        skin_lab_raw = analysis.skin_lab
+        skin_hex_raw = skin_hex
+
     # Query foundations, optionally filtered by brand
     query = select(Foundation)
     if req.brands:
@@ -120,6 +136,9 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
     return AnalysisResponse(
         skin_lab=[round(float(v), 2) for v in analysis.skin_lab],
         skin_hex=skin_hex,
+        skin_lab_raw=[round(float(v), 2) for v in skin_lab_raw],
+        skin_hex_raw=skin_hex_raw,
+        correction_applied=correction is not None,
         recommendations=recommendations,
         analysis_meta=AnalysisMeta(
             method=analysis.method,

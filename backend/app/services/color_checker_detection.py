@@ -49,7 +49,7 @@ COLORCHECKER_REFERENCE_LAB: list[list[float]] = [
     [20.46, -0.08, -0.97],
 ]
 
-_MAX_DETECTION_DIMENSION = 640
+_MAX_DETECTION_DIMENSION = 960
 _MAX_CANDIDATES = 10
 _MAX_ACCEPTED_SCORE = 70.0
 _MIN_COMPONENT_AREA_RATIO = 0.001
@@ -1607,7 +1607,12 @@ def _build_detection(
             )
         )
 
-    confidence = float(np.clip(1.0 - (score / _MAX_ACCEPTED_SCORE) * 0.75, 0.0, 1.0))
+    score_score = float(np.clip(1.0 - score / _MAX_ACCEPTED_SCORE, 0.0, 1.0))
+    patch_score = float(np.clip(len(patches) / 24.0, 0.0, 1.0))
+    corner_score = 1.0 if len(fiducials.corners) == 4 else 0.5
+    confidence = float(
+        np.clip(0.6 * score_score + 0.3 * patch_score + 0.1 * corner_score, 0.0, 1.0)
+    )
     return ColorCheckerDetection(
         score=score,
         confidence=confidence,

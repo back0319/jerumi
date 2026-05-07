@@ -46,6 +46,9 @@ export interface AnalysisMeta {
 export interface AnalysisResponse {
   skin_lab: [number, number, number];
   skin_hex: string;
+  skin_lab_raw: [number, number, number];
+  skin_hex_raw: string;
+  correction_applied: boolean;
   recommendations: RecommendationItem[];
   analysis_meta: AnalysisMeta;
 }

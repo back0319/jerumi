@@ -151,59 +151,57 @@ export function AdminPhotoAnalysisForm({
             </div>
             {!analysisResult && (
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                색상 추출 후 감지 신뢰도와 샘플 색상만 요약됩니다.
+                색상 추출 후 감지 신뢰도와 샘플 색상이 요약됩니다.
               </div>
             )}
             {analysisResult && (
-              <div className="space-y-2">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div
-                    className={`rounded-lg border px-3 py-2 text-sm ${
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                       photoDetection?.color_checker
-                        ? "border-violet-200 bg-violet-50 text-violet-700"
-                        : "border-amber-200 bg-amber-50 text-amber-700"
+                        ? "bg-violet-100 text-violet-700"
+                        : "bg-amber-100 text-amber-700"
                     }`}
                   >
-                    <p className="text-[11px] font-semibold">컬러체커 신뢰도</p>
-                    <p className="mt-1 font-semibold">
+                    {photoDetection?.color_checker ? "체커 검출" : "체커 미검출"}
+                  </span>
+                  <span className="text-gray-700">
+                    신뢰도{" "}
+                    <span className="font-semibold">
                       {photoDetection?.color_checker
                         ? `${Math.round(
                             photoDetection.color_checker.confidence * 100,
                           )}%`
+                        : "-"}
+                    </span>
+                  </span>
+                  <span className="text-gray-300">·</span>
+                  <span className="flex items-center gap-1.5 text-gray-700">
+                    샘플
+                    {photoDetection?.swatch && (
+                      <span
+                        className="inline-block h-4 w-4 rounded border border-black/10"
+                        style={{
+                          backgroundColor: photoDetection.swatch.sample_hex,
+                        }}
+                      />
+                    )}
+                    <span className="font-mono font-semibold">
+                      {photoDetection?.swatch
+                        ? photoDetection.swatch.sample_hex
                         : "미검출"}
-                    </p>
-                  </div>
-                  <div
-                    className={`rounded-lg border px-3 py-2 text-sm ${
-                      photoDetection?.swatch
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-amber-200 bg-amber-50 text-amber-700"
-                    }`}
-                  >
-                    <p className="text-[11px] font-semibold">화장품 샘플</p>
-                    <div className="mt-1 flex items-center gap-2">
-                      {photoDetection?.swatch && (
-                        <span
-                          className="h-4 w-4 rounded border border-black/10"
-                          style={{
-                            backgroundColor: photoDetection.swatch.sample_hex,
-                          }}
-                        />
-                      )}
-                      <span className="font-semibold">
-                        {photoDetection?.swatch
-                          ? photoDetection.swatch.sample_hex
-                          : "미검출"}
+                    </span>
+                  </span>
+                  {photoDetection?.swatch && (
+                    <>
+                      <span className="text-gray-300">·</span>
+                      <span className="text-gray-500">
+                        {photoDetection.swatch.pixel_count.toLocaleString()} px
                       </span>
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
-                {photoDetection?.swatch && (
-                  <p className="text-xs text-gray-500">
-                    {photoDetection.swatch.pixel_count.toLocaleString()} 픽셀
-                    기준으로 색상을 추출했습니다.
-                  </p>
-                )}
               </div>
             )}
           </div>

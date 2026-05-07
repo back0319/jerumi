@@ -59,5 +59,8 @@ class AnalysisMeta(BaseModel):
 class AnalysisResponse(BaseModel):
     skin_lab: list[float]
     skin_hex: str
+    skin_lab_raw: list[float]
+    skin_hex_raw: str
+    correction_applied: bool
     recommendations: list[RecommendationItem]
     analysis_meta: AnalysisMeta

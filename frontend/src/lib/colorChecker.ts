@@ -172,7 +172,7 @@ type PatchGridFit = {
   residualMean: number;
 };
 
-const DETECTION_MAX_DIMENSION = 640;
+const DETECTION_MAX_DIMENSION = 960;
 const MAX_CANDIDATES = 10;
 const MAX_ACCEPTED_SCORE = 70;
 const GRID_U_START = 0.13;
@@ -2302,13 +2302,19 @@ function detectionFromSamples(
   fiducials: ColorCheckerFiducials,
   samples: LocalPatchSample[],
 ): ColorCheckerDetection {
+  const scoreScore = Math.max(0, Math.min(1, 1 - score / MAX_ACCEPTED_SCORE));
+  const expectedPatches = 24;
+  const patchScore = Math.max(
+    0,
+    Math.min(1, samples.length / expectedPatches),
+  );
+  const cornerScore = fiducials.corners.length === 4 ? 1 : 0.5;
+  const confidence =
+    0.6 * scoreScore + 0.3 * patchScore + 0.1 * cornerScore;
   return {
     score: Math.round(score * 100) / 100,
     confidence:
-      Math.round(
-        Math.max(0, Math.min(1, 1 - (score / MAX_ACCEPTED_SCORE) * 0.75)) *
-          100,
-      ) / 100,
+      Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100,
     polygon,
     fiducials,
     patches: samples.map((sample, patchIndex) => ({

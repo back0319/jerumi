@@ -721,54 +721,32 @@ export default function ScanPage() {
       {/* Step 2: Detection review */}
       {step === "checker" && (
         <div className="rounded-xl bg-white p-4 shadow-sm sm:p-5 lg:p-6">
-          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">
-                자동 감지 영역 확인
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                사진에서 피부 영역과 컬러체커를 자동으로 찾았습니다. 보라색
-                외곽선이 컬러체커 영역이고, 감지되면 색 보정이 자동 적용됩니다.
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs sm:w-fit">
-              <div className="rounded-lg bg-gray-50 px-3 py-2">
-                <p className="font-semibold text-gray-800">
-                  {detectedChecker ? checkerQuality?.label : "미검출"}
-                </p>
-                <p className="text-gray-500">체커 상태</p>
-              </div>
-              <div className="rounded-lg bg-gray-50 px-3 py-2">
-                <p className="font-semibold text-gray-800">
-                  {skinExtraction?.combinedPixels.length?.toLocaleString() || 0}
-                </p>
-                <p className="text-gray-500">피부</p>
-              </div>
-              <div className="rounded-lg bg-gray-50 px-3 py-2">
-                <p className="font-semibold text-gray-800">
-                  {detectedChecker ? "ON" : "OFF"}
-                </p>
-                <p className="text-gray-500">보정</p>
-              </div>
-            </div>
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">자동 감지 영역 확인</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              피부 영역과 컬러체커(보라색 외곽선)를 자동으로 찾았습니다. 결과가
+              괜찮으면 분석을 시작하세요.
+            </p>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(380px,0.95fr)_minmax(420px,1.05fr)] xl:grid-cols-[minmax(420px,0.9fr)_minmax(520px,1.1fr)] lg:items-start">
             <div className="space-y-3">
-              <div className="relative w-full overflow-hidden rounded-xl border bg-gray-50">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  ref={checkerImgRef}
-                  src={imageUrl ?? ""}
-                  alt="컬러체커 보정 원본"
-                  className="block w-full max-h-[44vh] object-contain sm:max-h-[52vh] lg:max-h-[58vh]"
-                  onLoad={handleCheckerImageLoad}
-                  onError={handleCheckerImageError}
-                />
-                <canvas
-                  ref={previewCanvasRef}
-                  className="pointer-events-none absolute inset-0 h-full w-full rounded-xl"
-                />
+              <div className="flex justify-center">
+                <div className="relative inline-block max-w-full overflow-hidden rounded-xl border bg-gray-50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    ref={checkerImgRef}
+                    src={imageUrl ?? ""}
+                    alt="컬러체커 보정 원본"
+                    className="block max-w-full max-h-[44vh] sm:max-h-[52vh] lg:max-h-[58vh]"
+                    onLoad={handleCheckerImageLoad}
+                    onError={handleCheckerImageError}
+                  />
+                  <canvas
+                    ref={previewCanvasRef}
+                    className="pointer-events-none absolute inset-0 h-full w-full rounded-xl"
+                  />
+                </div>
               </div>
               <canvas ref={processingCanvasRef} className="hidden" />
               {analysisOverlay && (
@@ -784,17 +762,9 @@ export default function ScanPage() {
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4 lg:p-5">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">
-                    분석 전 보정 요약
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    컬러체커 검출 품질과 적용 여부를 확인합니다.
-                  </p>
-                </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
                 <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${
                     checkerQuality
                       ? checkerQuality.badgeClassName
                       : "bg-amber-50 text-amber-700 ring-amber-200"
@@ -802,135 +772,71 @@ export default function ScanPage() {
                 >
                   {detectedChecker ? checkerQuality?.label : "미검출"}
                 </span>
+                <span className="text-gray-700">
+                  신뢰도{" "}
+                  <span className="font-semibold">
+                    {detectedChecker ? `${checkerConfidence}%` : "-"}
+                  </span>
+                </span>
+                <span className="text-gray-300">·</span>
+                <span className="text-gray-700">
+                  패치{" "}
+                  <span className="font-semibold">
+                    {checkerPatchCount}/{EXPECTED_CHECKER_PATCH_COUNT}
+                  </span>
+                </span>
+                <span className="text-gray-300">·</span>
+                <span className="text-gray-700">
+                  보정{" "}
+                  <span
+                    className={`font-semibold ${
+                      detectedChecker ? "text-emerald-600" : "text-gray-400"
+                    }`}
+                  >
+                    {detectedChecker ? "ON" : "OFF"}
+                  </span>
+                </span>
+                <span className="text-gray-300">·</span>
+                <span className="text-gray-700">
+                  피부{" "}
+                  <span className="font-semibold">
+                    {skinExtraction?.combinedPixels.length?.toLocaleString() ||
+                      0}
+                  </span>{" "}
+                  px
+                </span>
               </div>
-
-              {detectedChecker ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        오차값 score
-                      </p>
-                      <p
-                        className={`mt-1 text-lg font-semibold ${checkerQuality?.accentClassName}`}
-                      >
-                        {detectedChecker.score.toFixed(2)}
-                      </p>
-                      <p className="mt-1 text-[11px] text-gray-400">
-                        낮을수록 정확
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        검출 신뢰도
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-gray-800">
-                        {checkerConfidence}%
-                      </p>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                        <div
-                          className="h-full rounded-full bg-rose-500"
-                          style={{ width: `${checkerConfidence}%` }}
-                        />
-                      </div>
-                      <p className="mt-1 text-[11px] text-gray-400">
-                        높을수록 안정
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        찾은 패치 수
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-gray-800">
-                        {checkerPatchCount}/{EXPECTED_CHECKER_PATCH_COUNT}
-                      </p>
-                      <p className="mt-1 text-[11px] text-gray-400">
-                        보정에 쓰는 색 패치
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        보정 적용
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-gray-800">
-                        ON
-                      </p>
-                      <p className="mt-1 text-[11px] text-gray-400">
-                        분석 요청에 포함
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 text-xs text-gray-500 sm:grid-cols-2">
-                    <p>
-                      <span className="font-semibold text-gray-700">
-                        score
-                      </span>
-                      는 기준색과 검출 패치 색의 평균 오차입니다.{" "}
-                      {CHECKER_ACCEPTED_SCORE} 이하면 보정에 사용합니다.
-                    </p>
-                    <p>
-                      <span className="font-semibold text-gray-700">
-                        신뢰도
-                      </span>
-                      는 score를 0-100%로 환산한 값입니다. 높을수록 체커 위치와
-                      색 샘플이 안정적입니다.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        오차값 score
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-gray-400">
-                        -
-                      </p>
-                      <p className="mt-1 text-[11px] text-gray-400">
-                        낮을수록 정확
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        검출 신뢰도
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-gray-400">
-                        -
-                      </p>
-                      <p className="mt-1 text-[11px] text-gray-400">
-                        높을수록 안정
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        찾은 패치 수
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-gray-400">
-                        0/{EXPECTED_CHECKER_PATCH_COUNT}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white px-3 py-3">
-                      <p className="text-[11px] font-semibold text-gray-500">
-                        보정 적용
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-gray-400">
-                        OFF
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 text-xs text-gray-500 sm:grid-cols-2">
-                    <p>
-                      <span className="font-semibold text-gray-700">
-                        score
-                      </span>
-                      와 신뢰도는 컬러체커가 검출되면 표시됩니다.
-                    </p>
-                    <p>컬러체커를 찾지 못하면 보정 없이 분석합니다.</p>
-                  </div>
+              {detectedChecker && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-rose-500"
+                    style={{ width: `${checkerConfidence}%` }}
+                  />
                 </div>
               )}
-              </div>
+              <details className="mt-3 text-xs text-gray-500">
+                <summary className="cursor-pointer font-semibold text-gray-600 hover:text-gray-800">
+                  자세히
+                </summary>
+                {detectedChecker ? (
+                  <div className="mt-2 space-y-1">
+                    <p>
+                      <span className="font-semibold text-gray-700">score</span>{" "}
+                      {detectedChecker.score.toFixed(2)} (낮을수록 정확,{" "}
+                      {CHECKER_ACCEPTED_SCORE} 이하면 보정 사용)
+                    </p>
+                    <p>
+                      신뢰도는 score · 패치 수 · 코너 정렬을 합산해 계산합니다.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2">
+                    컬러체커를 찾지 못해 보정 없이 분석합니다. 카드가 잘리지
+                    않게 다시 촬영하면 결과가 더 안정적입니다.
+                  </p>
+                )}
+              </details>
+            </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -987,7 +893,7 @@ export default function ScanPage() {
               <div>
                 <h2 className="text-lg font-semibold">내 피부색 분석 결과</h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  대표 피부색과 추천 결과를 한 번에 비교할 수 있게 정리했습니다.
+                  컬러체커 보정 전후 색을 함께 확인할 수 있게 정리했습니다.
                 </p>
               </div>
               <button
@@ -997,43 +903,84 @@ export default function ScanPage() {
                 다시 분석하기
               </button>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
-              <div
-                className="h-20 w-20 rounded-xl border shadow-inner sm:h-24 sm:w-24"
-                style={{ backgroundColor: result.skin_hex }}
-              />
-              <div className="grid gap-2 sm:grid-cols-4">
-                <div className="rounded-lg bg-gray-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-gray-700">
-                    CIELAB
-                  </p>
-                  <p className="mt-1 font-mono text-sm text-gray-600">
-                    L*={result.skin_lab[0]} a*={result.skin_lab[1]} b*=
-                    {result.skin_lab[2]}
-                  </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-start">
+              {imageUrl && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={imageUrl}
+                  alt="분석한 얼굴"
+                  className="block w-full max-w-[220px] rounded-xl border shadow-sm sm:w-[220px]"
+                />
+              )}
+              <div className="space-y-3">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-800">
+                      컬러체커 보정 전 / 후
+                    </p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        result.correction_applied
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {result.correction_applied ? "보정 적용" : "보정 미적용"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-white p-2">
+                      <div
+                        className="h-14 rounded-md border shadow-inner"
+                        style={{ backgroundColor: result.skin_hex_raw }}
+                      />
+                      <p className="mt-1.5 text-[11px] font-semibold text-gray-500">
+                        보정 전
+                      </p>
+                      <p className="font-mono text-xs text-gray-700">
+                        {result.skin_hex_raw}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] text-gray-400">
+                        L* {result.skin_lab_raw[0]} a* {result.skin_lab_raw[1]}{" "}
+                        b* {result.skin_lab_raw[2]}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white p-2 ring-1 ring-rose-200">
+                      <div
+                        className="h-14 rounded-md border shadow-inner"
+                        style={{ backgroundColor: result.skin_hex }}
+                      />
+                      <p className="mt-1.5 text-[11px] font-semibold text-rose-600">
+                        보정 후 (분석 사용)
+                      </p>
+                      <p className="font-mono text-xs text-gray-700">
+                        {result.skin_hex}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] text-gray-400">
+                        L* {result.skin_lab[0]} a* {result.skin_lab[1]} b*{" "}
+                        {result.skin_lab[2]}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="rounded-lg bg-gray-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-gray-700">HEX</p>
-                  <p className="mt-1 font-mono text-sm text-gray-600">
-                    {result.skin_hex}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-gray-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-gray-700">
-                    분석 신뢰도
-                  </p>
-                  <p className="mt-1 text-sm text-gray-600">
-                    {result.analysis_meta.confidence.level} ·{" "}
-                    {Math.round(result.analysis_meta.confidence.score * 100)}%
-                  </p>
-                </div>
-                <div className="rounded-lg bg-gray-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold text-gray-700">
-                    추천 개수
-                  </p>
-                  <p className="mt-1 text-sm text-gray-600">
-                    {result.recommendations.length}개
-                  </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-[11px] font-semibold text-gray-700">
+                      분석 신뢰도
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {result.analysis_meta.confidence.level} ·{" "}
+                      {Math.round(result.analysis_meta.confidence.score * 100)}%
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
+                    <p className="text-[11px] font-semibold text-gray-700">
+                      추천 개수
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {result.recommendations.length}개
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

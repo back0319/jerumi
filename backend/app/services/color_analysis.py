@@ -187,15 +187,21 @@ def rgb_pixels_to_lab(
 
 
 def _trim_lightness(lab: np.ndarray) -> np.ndarray:
-    """Remove highlight and shadow extremes from a LAB sample."""
+    """Bias toward well-lit skin pixels.
+
+    When a face ROI is partially in shadow, shadow pixels often dominate the
+    distribution. A symmetric trim (e.g., p10-p90) preserves them as the bulk,
+    so the medoid still lands in shadow. We bias toward the upper half of the
+    L* distribution while still excluding clipped specular highlights.
+    """
     candidates = lab
     if len(candidates) < 20:
         return candidates
 
     lightness = candidates[:, 0]
-    p10 = np.percentile(lightness, 10)
-    p90 = np.percentile(lightness, 90)
-    lightness_mask = (lightness >= p10) & (lightness <= p90)
+    lower = np.percentile(lightness, 50)
+    upper = np.percentile(lightness, 97)
+    lightness_mask = (lightness >= lower) & (lightness <= upper)
 
     if np.sum(lightness_mask) >= 10:
         return candidates[lightness_mask]

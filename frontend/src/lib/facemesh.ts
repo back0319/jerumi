@@ -207,6 +207,9 @@ export function extractSkinPixelsByRegion(
   const polygons = buildRegionPolygons(canvas, landmarks, regions);
   const regionPixels = createEmptySkinRegionPixels();
 
+  const CLIP_HIGH = 250;
+  const CLIP_LOW = 8;
+
   for (const polygon of polygons) {
     const { points, bounds } = polygon;
     const pixels = regionPixels[polygon.name as SkinRegionName];
@@ -216,11 +219,20 @@ export function extractSkinPixelsByRegion(
         if (!isPointInPolygon(x, y, points)) continue;
 
         const index = (y * width + x) * 4;
-        pixels.push([
-          imageData.data[index],
-          imageData.data[index + 1],
-          imageData.data[index + 2],
-        ]);
+        const r = imageData.data[index];
+        const g = imageData.data[index + 1];
+        const b = imageData.data[index + 2];
+
+        if (
+          r >= CLIP_HIGH ||
+          g >= CLIP_HIGH ||
+          b >= CLIP_HIGH ||
+          (r <= CLIP_LOW && g <= CLIP_LOW && b <= CLIP_LOW)
+        ) {
+          continue;
+        }
+
+        pixels.push([r, g, b]);
       }
     }
   }
