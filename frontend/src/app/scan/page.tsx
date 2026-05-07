@@ -140,14 +140,26 @@ export default function ScanPage() {
 
   const drawImageToCanvas = useCallback(
     (img: HTMLImageElement, canvas: HTMLCanvasElement) => {
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+      // Modern phone cameras emit ~12 megapixel JPEGs. Feeding the raw
+      // resolution into MediaPipe FaceMesh, polygon-fill ROI extraction, and
+      // color checker detection makes mobile run for tens of seconds. Scale
+      // the processing canvas to a working max so every downstream pass
+      // operates on ~1.2MP at most. The backend caps skin samples at 10k
+      // pixels anyway so this loses no analysis fidelity.
+      const MAX_PROCESSING_DIMENSION = 1280;
+      const longestSide = Math.max(img.naturalWidth, img.naturalHeight);
+      const scale =
+        longestSide > MAX_PROCESSING_DIMENSION
+          ? MAX_PROCESSING_DIMENSION / longestSide
+          : 1;
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
       const ctx = canvas.getContext("2d");
       if (!ctx) return false;
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
+      ctx.imageSmoothingQuality = "medium";
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       return true;
     },
     [],
