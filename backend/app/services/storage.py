@@ -27,6 +27,9 @@ class UploadResult:
     public_url: str
 
 
+_BUCKET_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,62}$")
+
+
 def _require_storage_config() -> tuple[str, str, str]:
     if not settings.SUPABASE_URL:
         raise StorageConfigError("SUPABASE_URL is not configured.")
@@ -35,10 +38,18 @@ def _require_storage_config() -> tuple[str, str, str]:
     if not settings.SUPABASE_STORAGE_BUCKET:
         raise StorageConfigError("SUPABASE_STORAGE_BUCKET is not configured.")
 
+    bucket = settings.SUPABASE_STORAGE_BUCKET.strip()
+    if not _BUCKET_NAME_PATTERN.match(bucket):
+        raise StorageConfigError(
+            "SUPABASE_STORAGE_BUCKET 값이 Supabase 버킷 이름 규칙을 만족하지 "
+            "않습니다. 1-63자, 소문자/숫자/하이픈/점만 허용되며, 공백·대문자·"
+            f"언더스코어는 사용할 수 없습니다. (현재 값: {bucket!r})"
+        )
+
     return (
-        settings.SUPABASE_URL.rstrip("/"),
-        settings.SUPABASE_SERVICE_ROLE_KEY,
-        settings.SUPABASE_STORAGE_BUCKET,
+        settings.SUPABASE_URL.strip().rstrip("/"),
+        settings.SUPABASE_SERVICE_ROLE_KEY.strip(),
+        bucket,
     )
 
 
