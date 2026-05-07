@@ -30,15 +30,25 @@ class UploadResult:
 _BUCKET_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,62}$")
 
 
+def _normalize_config_value(value: str | None) -> str:
+    if value is None:
+        return ""
+
+    return value.strip().lstrip("\ufeff").strip()
+
+
 def _require_storage_config() -> tuple[str, str, str]:
-    if not settings.SUPABASE_URL:
+    supabase_url = _normalize_config_value(settings.SUPABASE_URL)
+    service_role_key = _normalize_config_value(settings.SUPABASE_SERVICE_ROLE_KEY)
+    bucket = _normalize_config_value(settings.SUPABASE_STORAGE_BUCKET)
+
+    if not supabase_url:
         raise StorageConfigError("SUPABASE_URL is not configured.")
-    if not settings.SUPABASE_SERVICE_ROLE_KEY:
+    if not service_role_key:
         raise StorageConfigError("SUPABASE_SERVICE_ROLE_KEY is not configured.")
-    if not settings.SUPABASE_STORAGE_BUCKET:
+    if not bucket:
         raise StorageConfigError("SUPABASE_STORAGE_BUCKET is not configured.")
 
-    bucket = settings.SUPABASE_STORAGE_BUCKET.strip()
     if not _BUCKET_NAME_PATTERN.match(bucket):
         raise StorageConfigError(
             "SUPABASE_STORAGE_BUCKET 값이 Supabase 버킷 이름 규칙을 만족하지 "
@@ -47,8 +57,8 @@ def _require_storage_config() -> tuple[str, str, str]:
         )
 
     return (
-        settings.SUPABASE_URL.strip().rstrip("/"),
-        settings.SUPABASE_SERVICE_ROLE_KEY.strip(),
+        supabase_url.rstrip("/"),
+        service_role_key,
         bucket,
     )
 
