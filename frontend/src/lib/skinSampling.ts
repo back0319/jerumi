@@ -72,6 +72,28 @@ export function averagePixelsToHex(pixels: number[][]): string {
     .padStart(2, "0")}${averageBlue.toString(16).padStart(2, "0")}`;
 }
 
+/**
+ * Approximates the backend's brightness-biased trim (p50–p97 by L*) used in
+ * `_trim_lightness` so the pre-analysis preview swatch matches the post-analysis
+ * "보정 전" color. Frontend can't run the full LAB pipeline, but sRGB luminance
+ * is well correlated with L* — close enough for a preview.
+ */
+export function brightSkinPreviewHex(pixels: number[][]): string {
+  if (pixels.length < 20) return averagePixelsToHex(pixels);
+
+  const withLuminance = pixels.map((rgb) => ({
+    rgb,
+    y: 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2],
+  }));
+  withLuminance.sort((a, b) => a.y - b.y);
+
+  const lo = Math.floor(withLuminance.length * 0.5);
+  const hi = Math.max(lo + 1, Math.ceil(withLuminance.length * 0.97));
+  const kept = withLuminance.slice(lo, hi).map((x) => x.rgb);
+
+  return averagePixelsToHex(kept);
+}
+
 export function downsamplePixels(
   pixels: number[][],
   maxCount: number,

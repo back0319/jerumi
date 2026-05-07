@@ -17,7 +17,7 @@ import {
   type ColorCheckerDetection,
 } from "@/lib/colorChecker";
 import {
-  averagePixelsToHex,
+  brightSkinPreviewHex,
   downsamplePixels,
   downsampleSkinRegions,
   FALLBACK_OVERLAY_FILL,
@@ -411,7 +411,7 @@ export default function ScanPage() {
         {
           mode: "fallback",
           pixelCount: pixels.length,
-          sampleHex: averagePixelsToHex(pixels),
+          sampleHex: brightSkinPreviewHex(pixels),
           colorChecker: detectColorCheckerFromCanvas(canvas),
           regionPixelCounts: {},
           polygons: [
@@ -504,7 +504,7 @@ export default function ScanPage() {
           {
             mode: "facemesh",
             pixelCount: pixels.length,
-            sampleHex: averagePixelsToHex(pixels),
+            sampleHex: brightSkinPreviewHex(pixels),
             colorChecker: detectColorCheckerFromCanvas(canvas),
             polygons,
             regionPixelCounts: getSkinRegionPixelCounts(skinRegions),
@@ -931,7 +931,7 @@ export default function ScanPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-lg bg-white p-2">
                       <div
-                        className="h-14 rounded-md border shadow-inner"
+                        className="aspect-square w-full rounded-md border shadow-inner"
                         style={{ backgroundColor: result.skin_hex_raw }}
                       />
                       <p className="mt-1.5 text-[11px] font-semibold text-gray-500">
@@ -947,7 +947,7 @@ export default function ScanPage() {
                     </div>
                     <div className="rounded-lg bg-white p-2 ring-1 ring-rose-200">
                       <div
-                        className="h-14 rounded-md border shadow-inner"
+                        className="aspect-square w-full rounded-md border shadow-inner"
                         style={{ backgroundColor: result.skin_hex }}
                       />
                       <p className="mt-1.5 text-[11px] font-semibold text-rose-600">
@@ -1052,14 +1052,14 @@ export default function ScanPage() {
                 <div className="mb-3 grid grid-cols-2 gap-2">
                   <div className="text-center">
                     <div
-                      className="h-14 rounded-lg border shadow-inner"
+                      className="aspect-square w-full rounded-lg border shadow-inner"
                       style={{ backgroundColor: result.skin_hex }}
                     />
                     <p className="mt-1 text-[11px] text-gray-400">내 피부</p>
                   </div>
                   <div className="text-center">
                     <div
-                      className="h-14 rounded-lg border shadow-inner"
+                      className="aspect-square w-full rounded-lg border shadow-inner"
                       style={{ backgroundColor: rec.hex_color }}
                     />
                     <p className="mt-1 text-[11px] text-gray-400">추천색</p>

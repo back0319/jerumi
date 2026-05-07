@@ -112,7 +112,7 @@ export function AdminPhotoAnalysisForm({
       )}
 
       {photoPreview && (
-        <div className="mb-4 grid gap-4 lg:grid-cols-2">
+        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div>
             <p className="mb-2 text-sm font-medium text-gray-700">
               사진 미리보기
@@ -138,24 +138,33 @@ export function AdminPhotoAnalysisForm({
             </button>
           </div>
 
-          <div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
             <div className="mb-2 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-gray-700">
-                자동 감지 결과
+              <p className="text-sm font-semibold text-gray-800">
+                {analysisResult ? "분석 결과" : "분석 대기 중"}
               </p>
-              {analysisResult && (
-                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600">
-                  보라색 체커 · 초록색 샘플
+              {analysisResult?.confidence && (
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    analysisResult.confidence.level === "높음"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : analysisResult.confidence.level === "보통"
+                        ? "bg-sky-100 text-sky-700"
+                        : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  분석 신뢰도 {analysisResult.confidence.level} ·{" "}
+                  {Math.round(analysisResult.confidence.score * 100)}%
                 </span>
               )}
             </div>
-            {!analysisResult && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                색상 추출 후 감지 신뢰도와 샘플 색상이 요약됩니다.
-              </div>
-            )}
-            {analysisResult && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+
+            {!analysisResult ? (
+              <p className="text-sm text-gray-500">
+                "색상 추출"을 누르면 컬러체커 검출과 샘플 색이 자동으로 표시됩니다.
+              </p>
+            ) : (
+              <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
                   <span
                     className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
@@ -167,7 +176,7 @@ export function AdminPhotoAnalysisForm({
                     {photoDetection?.color_checker ? "체커 검출" : "체커 미검출"}
                   </span>
                   <span className="text-gray-700">
-                    신뢰도{" "}
+                    체커 신뢰도{" "}
                     <span className="font-semibold">
                       {photoDetection?.color_checker
                         ? `${Math.round(
@@ -176,98 +185,61 @@ export function AdminPhotoAnalysisForm({
                         : "-"}
                     </span>
                   </span>
-                  <span className="text-gray-300">·</span>
-                  <span className="flex items-center gap-1.5 text-gray-700">
-                    샘플
-                    {photoDetection?.swatch && (
-                      <span
-                        className="inline-block h-4 w-4 rounded border border-black/10"
-                        style={{
-                          backgroundColor: photoDetection.swatch.sample_hex,
-                        }}
-                      />
-                    )}
-                    <span className="font-mono font-semibold">
-                      {photoDetection?.swatch
-                        ? photoDetection.swatch.sample_hex
-                        : "미검출"}
-                    </span>
-                  </span>
                   {photoDetection?.swatch && (
                     <>
                       <span className="text-gray-300">·</span>
                       <span className="text-gray-500">
-                        {photoDetection.swatch.pixel_count.toLocaleString()} px
+                        샘플 {photoDetection.swatch.pixel_count.toLocaleString()} px
                       </span>
                     </>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {analysisResult && (
-        <div className="mb-4 rounded-lg bg-gray-50 p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold">추출 결과</h3>
-            {analysisResult.confidence && (
-              <span
-                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                  analysisResult.confidence.level === "높음"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : analysisResult.confidence.level === "보통"
-                      ? "bg-sky-100 text-sky-700"
-                      : "bg-amber-100 text-amber-700"
-                }`}
-              >
-                분석 신뢰도 {analysisResult.confidence.level} ·{" "}
-                {Math.round(analysisResult.confidence.score * 100)}%
-              </span>
+                <div className="flex items-center gap-3 rounded-lg bg-white p-3">
+                  <div
+                    className="aspect-square w-16 shrink-0 rounded-lg border shadow-inner"
+                    style={{ backgroundColor: analysisResult.hex_color }}
+                  />
+                  <div className="min-w-0 text-sm">
+                    <p className="font-mono">
+                      L*={analysisResult.L_value} a*={analysisResult.a_value} b*=
+                      {analysisResult.b_value}
+                    </p>
+                    <p className="truncate text-gray-500">
+                      HEX: {analysisResult.hex_color} · 언더톤:{" "}
+                      {analysisResult.undertone}
+                    </p>
+                  </div>
+                </div>
+
+                {analysisResult.confidence && (
+                  <>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
+                      <div
+                        className={`h-full rounded-full ${
+                          analysisResult.confidence.level === "높음"
+                            ? "bg-emerald-500"
+                            : analysisResult.confidence.level === "보통"
+                              ? "bg-sky-500"
+                              : "bg-amber-500"
+                        }`}
+                        style={{
+                          width: `${Math.round(analysisResult.confidence.score * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    {analysisResult.confidence.notes.length > 0 && (
+                      <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-gray-500">
+                        {analysisResult.confidence.notes.map((note, idx) => (
+                          <li key={idx}>{note}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <div
-              className="h-16 w-16 rounded-lg border shadow-inner"
-              style={{ backgroundColor: analysisResult.hex_color }}
-            />
-            <div className="text-sm">
-              <p className="font-mono">
-                L*={analysisResult.L_value} a*={analysisResult.a_value} b*=
-                {analysisResult.b_value}
-              </p>
-              <p className="text-gray-500">
-                HEX: {analysisResult.hex_color} | 언더톤:{" "}
-                {analysisResult.undertone}
-              </p>
-            </div>
-          </div>
-          {analysisResult.confidence && (
-            <>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className={`h-full rounded-full ${
-                    analysisResult.confidence.level === "높음"
-                      ? "bg-emerald-500"
-                      : analysisResult.confidence.level === "보통"
-                        ? "bg-sky-500"
-                        : "bg-amber-500"
-                  }`}
-                  style={{
-                    width: `${Math.round(analysisResult.confidence.score * 100)}%`,
-                  }}
-                />
-              </div>
-              {analysisResult.confidence.notes.length > 0 && (
-                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[11px] text-gray-500">
-                  {analysisResult.confidence.notes.map((note, idx) => (
-                    <li key={idx}>{note}</li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
         </div>
       )}
 
