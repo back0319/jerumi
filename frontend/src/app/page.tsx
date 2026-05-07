@@ -1,16 +1,21 @@
 "use client";
 
+import { APP_VERSION } from "@/lib/version";
+
 export default function Home() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 sm:py-6">
       <section className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,360px)] lg:items-stretch">
         <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-4 flex flex-wrap gap-2 text-xs text-gray-500">
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-gray-500">
             <span className="rounded-full bg-rose-50 px-3 py-1 text-rose-600">
               사진 1장
             </span>
             <span className="rounded-full bg-gray-100 px-3 py-1">컬러체커</span>
             <span className="rounded-full bg-gray-100 px-3 py-1">ΔE 추천</span>
+            <span className="ml-auto rounded-full border border-gray-200 px-3 py-1 font-mono text-gray-500">
+              {APP_VERSION}
+            </span>
           </div>
 
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
