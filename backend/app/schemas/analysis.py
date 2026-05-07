@@ -26,6 +26,14 @@ class AnalysisRequest(BaseModel):
     top_n: int = 5
 
 
+class RecommendationRequest(BaseModel):
+    """Recommendation-only request using an already analyzed skin LAB value."""
+    skin_lab: list[float] = Field(min_length=3, max_length=3)
+    brands: list[str] | None = None
+    product_names: list[str] | None = None
+    top_n: int = Field(default=200, ge=1, le=500)
+
+
 class RecommendationItem(BaseModel):
     id: int
     brand: str

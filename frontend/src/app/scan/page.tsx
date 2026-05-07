@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { useApiPrewarm } from "@/hooks/useApiPrewarm";
 import {
   buildRegionPolygons,
@@ -114,6 +114,12 @@ export default function ScanPage() {
   >(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
+  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
+  const [brandListError, setBrandListError] = useState<string | null>(null);
+  const comparisonCacheRef = useRef<Map<string, RecommendationItem[]>>(
+    new Map(),
+  );
+  const comparisonRequestIdRef = useRef(0);
   const lastAnalyzeRequestRef = useRef<{
     skin_pixels_rgb: number[][];
     skin_regions_rgb: ReturnType<typeof downsampleSkinRegions> | null;
@@ -122,6 +128,9 @@ export default function ScanPage() {
   const recommendationBrands = result
     ? Array.from(new Set(result.recommendations.map((r) => r.brand))).sort()
     : [];
+  const comparisonBrandOptions = Array.from(
+    new Set([...availableBrands, ...recommendationBrands]),
+  ).sort((left, right) => left.localeCompare(right, "ko"));
   const productsForComparisonBrand =
     comparisonBrand && comparisonResult
       ? Array.from(
@@ -578,6 +587,10 @@ export default function ScanPage() {
     setComparisonBrand(null);
     setComparisonProduct(null);
     setComparisonResult(null);
+    setComparisonError(null);
+    setBrandListError(null);
+    comparisonCacheRef.current.clear();
+    comparisonRequestIdRef.current += 1;
 
     try {
       const patches = buildCheckerPatchesFromDetection(detectedChecker);
@@ -602,10 +615,22 @@ export default function ScanPage() {
       };
       lastAnalyzeRequestRef.current = baseRequestBody;
 
-      const response = await apiPost<AnalysisResponse>("/analyze", {
-        ...baseRequestBody,
-        top_n: 10,
-      });
+      const [response, brands] = await Promise.all([
+        apiPost<AnalysisResponse>("/analyze", {
+          ...baseRequestBody,
+          top_n: 10,
+        }),
+        apiGet<string[]>("/foundations/brands").catch(() => null),
+      ]);
+
+      if (brands) {
+        setAvailableBrands(brands);
+      } else {
+        setAvailableBrands([]);
+        setBrandListError(
+          "브랜드 목록을 불러오지 못해 상위 추천 브랜드만 표시합니다.",
+        );
+      }
 
       setResult(response);
       setStep("done");
@@ -621,24 +646,45 @@ export default function ScanPage() {
       setComparisonProduct(null);
       setComparisonResult(null);
       setComparisonError(null);
+      const requestId = ++comparisonRequestIdRef.current;
 
-      if (!brand || !lastAnalyzeRequestRef.current) return;
+      if (!brand || !result) {
+        setComparisonLoading(false);
+        return;
+      }
+
+      const cached = comparisonCacheRef.current.get(brand);
+      if (cached) {
+        setComparisonResult(cached);
+        setComparisonLoading(false);
+        return;
+      }
 
       setComparisonLoading(true);
       try {
-        const response = await apiPost<AnalysisResponse>("/analyze", {
-          ...lastAnalyzeRequestRef.current,
-          brands: [brand],
-          top_n: 200,
-        });
-        setComparisonResult(response.recommendations);
+        const recommendations = await apiPost<RecommendationItem[]>(
+          "/recommendations",
+          {
+            skin_lab: result.skin_lab,
+            brands: [brand],
+            top_n: 200,
+          },
+        );
+        comparisonCacheRef.current.set(brand, recommendations);
+        if (comparisonRequestIdRef.current === requestId) {
+          setComparisonResult(recommendations);
+        }
       } catch (err: any) {
-        setComparisonError(err.message || "비교 정보를 가져오지 못했습니다.");
+        if (comparisonRequestIdRef.current === requestId) {
+          setComparisonError(err.message || "비교 정보를 가져오지 못했습니다.");
+        }
       } finally {
-        setComparisonLoading(false);
+        if (comparisonRequestIdRef.current === requestId) {
+          setComparisonLoading(false);
+        }
       }
     },
-    [],
+    [result],
   );
 
   const handleSelectDifferentPhoto = useCallback(() => {
@@ -653,6 +699,10 @@ export default function ScanPage() {
     setResult(null);
     setError(null);
     setShowAllRecommendations(false);
+    setAvailableBrands([]);
+    setBrandListError(null);
+    comparisonCacheRef.current.clear();
+    comparisonRequestIdRef.current += 1;
   }, [revokeUploadedObjectUrl]);
 
   const resetAll = () => {
@@ -667,6 +717,10 @@ export default function ScanPage() {
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
     setShowAllRecommendations(false);
+    setAvailableBrands([]);
+    setBrandListError(null);
+    comparisonCacheRef.current.clear();
+    comparisonRequestIdRef.current += 1;
   };
 
   useApiPrewarm("/analysis-ready");
@@ -678,6 +732,10 @@ export default function ScanPage() {
     setSkinExtraction(null);
     setAnalysisOverlay(null);
     setResult(null);
+    setAvailableBrands([]);
+    setBrandListError(null);
+    comparisonCacheRef.current.clear();
+    comparisonRequestIdRef.current += 1;
   }, [imageUrl]);
 
   useEffect(() => {
@@ -1107,7 +1165,7 @@ export default function ScanPage() {
               className="rounded border px-3 py-2 text-sm"
             >
               <option value="">브랜드: 전체 추천</option>
-              {recommendationBrands.map((brand) => (
+              {comparisonBrandOptions.map((brand) => (
                 <option key={brand} value={brand}>
                   {brand}
                 </option>
@@ -1143,6 +1201,11 @@ export default function ScanPage() {
             )}
           </div>
 
+          {brandListError && (
+            <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              {brandListError}
+            </div>
+          )}
           {comparisonError && (
             <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {comparisonError}

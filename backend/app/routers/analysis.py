@@ -13,6 +13,7 @@ from app.schemas.analysis import (
     AnalysisMeta,
     AnalysisRequest,
     AnalysisResponse,
+    RecommendationRequest,
     RecommendationItem,
 )
 
@@ -32,6 +33,70 @@ async def warm_analysis_dependencies(db: AsyncSession = Depends(get_db)):
     get_color_analysis_service()
     await db.execute(select(Foundation.id).limit(1))
     return {"status": "ready"}
+
+
+async def _load_foundations(
+    db: AsyncSession,
+    brands: list[str] | None = None,
+    product_names: list[str] | None = None,
+) -> list[Foundation]:
+    query = select(Foundation)
+    if brands:
+        query = query.where(Foundation.brand.in_(brands))
+    if product_names:
+        query = query.where(Foundation.product_name.in_(product_names))
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+def _foundation_to_recommendation_input(foundation: Foundation) -> dict:
+    return {
+        "id": foundation.id,
+        "brand": foundation.brand,
+        "product_name": foundation.product_name,
+        "shade_code": foundation.shade_code,
+        "shade_name": foundation.shade_name,
+        "L_value": foundation.L_value,
+        "a_value": foundation.a_value,
+        "b_value": foundation.b_value,
+        "hex_color": foundation.hex_color,
+        "undertone": foundation.undertone,
+    }
+
+
+def _ranked_to_recommendation_item(ranked: dict) -> RecommendationItem:
+    return RecommendationItem(
+        id=ranked["id"],
+        brand=ranked["brand"],
+        product_name=ranked["product_name"],
+        shade_code=ranked["shade_code"],
+        shade_name=ranked["shade_name"],
+        lab=[ranked["L_value"], ranked["a_value"], ranked["b_value"]],
+        hex_color=ranked["hex_color"],
+        delta_e=ranked["delta_e"],
+        delta_e_category=ranked["delta_e_category"],
+        delta_e_range=ranked["delta_e_range"],
+        delta_e_description=ranked["delta_e_description"],
+        undertone=ranked["undertone"],
+    )
+
+
+async def _recommend_foundations(
+    *,
+    db: AsyncSession,
+    skin_lab: list[float],
+    brands: list[str] | None,
+    product_names: list[str] | None,
+    top_n: int,
+) -> list[RecommendationItem]:
+    color_analysis = get_color_analysis_service()
+    foundations = await _load_foundations(db, brands, product_names)
+    ranked = color_analysis.compute_recommendations(
+        skin_lab,
+        [_foundation_to_recommendation_input(f) for f in foundations],
+        top_n,
+    )
+    return [_ranked_to_recommendation_item(r) for r in ranked]
 
 
 @router.post("/analyze", response_model=AnalysisResponse)
@@ -84,56 +149,13 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
         skin_lab_raw = analysis.skin_lab
         skin_hex_raw = skin_hex
 
-    # Query foundations, optionally filtered by brand and/or product
-    query = select(Foundation)
-    if req.brands:
-        query = query.where(Foundation.brand.in_(req.brands))
-    if req.product_names:
-        query = query.where(Foundation.product_name.in_(req.product_names))
-    result = await db.execute(query)
-    foundations = result.scalars().all()
-
-    # Convert to dicts for matching
-    foundation_dicts = [
-        {
-            "id": f.id,
-            "brand": f.brand,
-            "product_name": f.product_name,
-            "shade_code": f.shade_code,
-            "shade_name": f.shade_name,
-            "L_value": f.L_value,
-            "a_value": f.a_value,
-            "b_value": f.b_value,
-            "hex_color": f.hex_color,
-            "undertone": f.undertone,
-        }
-        for f in foundations
-    ]
-
-    # Compute CIEDE2000 and get top N
-    ranked = color_analysis.compute_recommendations(
-        analysis.skin_lab,
-        foundation_dicts,
-        req.top_n,
+    recommendations = await _recommend_foundations(
+        db=db,
+        skin_lab=list(analysis.skin_lab),
+        brands=req.brands,
+        product_names=req.product_names,
+        top_n=req.top_n,
     )
-
-    recommendations = [
-        RecommendationItem(
-            id=r["id"],
-            brand=r["brand"],
-            product_name=r["product_name"],
-            shade_code=r["shade_code"],
-            shade_name=r["shade_name"],
-            lab=[r["L_value"], r["a_value"], r["b_value"]],
-            hex_color=r["hex_color"],
-            delta_e=r["delta_e"],
-            delta_e_category=r["delta_e_category"],
-            delta_e_range=r["delta_e_range"],
-            delta_e_description=r["delta_e_description"],
-            undertone=r["undertone"],
-        )
-        for r in ranked
-    ]
 
     return AnalysisResponse(
         skin_lab=[round(float(v), 2) for v in analysis.skin_lab],
@@ -159,4 +181,19 @@ async def analyze_skin(req: AnalysisRequest, db: AsyncSession = Depends(get_db))
                 notes=analysis.confidence.notes,
             ),
         ),
+    )
+
+
+@router.post("/recommendations", response_model=list[RecommendationItem])
+async def recommend_from_skin_lab(
+    req: RecommendationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Recommend foundations for an already computed skin LAB value."""
+    return await _recommend_foundations(
+        db=db,
+        skin_lab=req.skin_lab,
+        brands=req.brands,
+        product_names=req.product_names,
+        top_n=req.top_n,
     )
