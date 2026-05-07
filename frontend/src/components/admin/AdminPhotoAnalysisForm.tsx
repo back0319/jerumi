@@ -262,13 +262,6 @@ export function AdminPhotoAnalysisForm({
             >
               {isSavingPhoto ? "저장 중..." : "DB에 저장"}
             </button>
-            <button
-              onClick={onAnalyze}
-              disabled={analyzing}
-              className="rounded bg-gray-200 px-5 py-2 text-sm text-gray-700 hover:bg-gray-300 disabled:opacity-50"
-            >
-              {analyzing ? "분석 중..." : "다시 분석"}
-            </button>
           </>
         )}
         <button
