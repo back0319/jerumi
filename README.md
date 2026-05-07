@@ -38,8 +38,14 @@
 
 ### `v1.2.5`
 
-- 분석 신뢰도가 직사광 셀카에서 과도하게 낮게 표시되던 문제 완화: 그늘/홍조로 제외된 ROI를 ROI 간 ΔE 계산에서도 함께 빼서 더블카운팅 제거, ΔE 페널티 임계 5/8 → 7/10으로 완화, 제외 ROI 페널티 −0.06 → −0.03
-- 관리자 사진 기반 화장품 등록에도 분석 신뢰도 점수 추가: 컬러체커 신뢰도 · 샘플 픽셀수 · LAB 균일도의 가중합으로 점수와 등급(높음/보통/낮음) 표시, 원인 노트 함께 출력
+- 분석 신뢰도가 직사광 셀카에서 과도하게 낮게 표시되던 문제 완화
+  - 그늘/홍조로 제외된 ROI를 ROI 간 `max_region_delta_e` 계산에서도 함께 빼서 같은 ROI가 두 번 페널티를 받던 더블카운팅 제거
+  - ΔE 페널티 임계 5/8 → 7/10으로 완화, 제외 ROI 페널티 `-0.06` → `-0.03`
+  - 결과적으로 직사광 셀카 기준 신뢰도가 0.55~0.65 (낮음) → 0.75~0.85 (보통/높음) 수준으로 올라옴
+- 관리자 사진 기반 화장품 등록에도 분석 신뢰도 점수 추가
+  - `0.5 · 컬러체커 신뢰도 + 0.3 · 샘플 픽셀수 + 0.2 · LAB 균일도`의 가중합
+  - 등급(높음/보통/낮음) 배지·진행바·원인 노트(체커 미검출, 샘플 부족, 색 편차 큼 등)를 추출 결과 카드에 함께 표시
+  - `/api/foundations/analyze-swatch`, `/api/foundations/from-photo` 응답에 `confidence: { score, level, notes }` 필드 추가
 - DB 스키마 변경 없음. Supabase 마이그레이션 불필요
 
 ### `v1.2.4`
@@ -263,8 +269,8 @@ npx vercel@latest dev -L
 | `POST /api/foundations` | 파운데이션 수동 등록 |
 | `PUT /api/foundations/{id}` | 파운데이션 수정 |
 | `DELETE /api/foundations/{id}` | 파운데이션 삭제 |
-| `POST /api/foundations/analyze-swatch` | 스와치 사진만 분석 |
-| `POST /api/foundations/from-photo` | 스와치 사진 분석 후 DB 저장 |
+| `POST /api/foundations/analyze-swatch` | 스와치 사진만 분석 (응답에 `confidence` 포함) |
+| `POST /api/foundations/from-photo` | 스와치 사진 분석 후 DB 저장 (응답에 `confidence` 포함) |
 
 메모:
 
