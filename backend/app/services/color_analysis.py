@@ -486,21 +486,20 @@ def build_confidence_summary(
     minimum_region_pixels: int = 50,
 ) -> ConfidenceSummary:
     """Estimate analysis confidence from ROI coverage, method, and region consistency."""
-    score = 0.92 if method == "region-medoid" else 0.7
+    score = 0.95 if method == "region-medoid" else 0.72
     notes: list[str] = []
 
-    if total_pixel_count < 300:
-        score -= 0.18
+    if total_pixel_count < 200:
+        score -= 0.20
         notes.append("분석에 사용된 피부 픽셀이 적습니다.")
-    elif total_pixel_count < 800:
-        score -= 0.08
-        notes.append("피부 픽셀 수가 충분하지 않아 결과 변동 가능성이 있습니다.")
+    elif total_pixel_count < 2000:
+        score -= 0.10 * (2000 - total_pixel_count) / 1800
 
     if method == "flat-pixels":
-        score -= 0.08
+        score -= 0.10
         notes.append("다중 ROI 대신 단일 평면 픽셀 경로를 사용했습니다.")
     elif method == "flat-fallback":
-        score -= 0.14
+        score -= 0.18
         notes.append("ROI 샘플이 부족해 fallback 평면 경로로 분석했습니다.")
 
     if region_summary is not None:
@@ -512,13 +511,13 @@ def build_confidence_summary(
         ]
 
         if valid_region_count == 3:
-            score -= 0.06
+            score -= 0.05
             notes.append("일부 ROI가 최소 픽셀 수를 충족하지 못했습니다.")
         elif valid_region_count == 2:
-            score -= 0.14
+            score -= 0.13
             notes.append("유효한 ROI가 2개뿐이라 대표색 안정성이 낮아질 수 있습니다.")
         elif valid_region_count == 1:
-            score -= 0.26
+            score -= 0.25
             notes.append("유효한 ROI가 1개뿐이라 결과가 국소 색에 치우칠 수 있습니다.")
 
         if missing_regions:
@@ -526,26 +525,24 @@ def build_confidence_summary(
                 "제외된 ROI: " + ", ".join(missing_regions)
             )
 
-        if region_summary.excluded_region_names:
-            score -= 0.03
+        excluded_count = len(region_summary.excluded_region_names)
+        if excluded_count > 0:
+            score -= 0.03 * excluded_count
             notes.append(
                 "홍조/그림자 영향이 큰 ROI 제외: "
                 + ", ".join(region_summary.excluded_region_names)
             )
 
         spread = region_summary.max_region_delta_e
-        if spread is not None:
-            if spread >= 10.0:
-                score -= 0.14
+        if spread is not None and spread > 3.0:
+            excess = min(spread - 3.0, 10.0)
+            score -= 0.02 * excess
+            if spread >= 8.0:
                 notes.append("ROI 간 색 차가 커서 조명 또는 피부 편차 영향이 큽니다.")
-            elif spread >= 7.0:
-                score -= 0.08
-                notes.append("ROI 간 색 차가 다소 커서 결과 일관성이 떨어질 수 있습니다.")
             elif spread >= 5.0:
-                score -= 0.03
-                notes.append("ROI 간 색 차가 약간 관찰됩니다.")
+                notes.append("ROI 간 색 차가 다소 관찰됩니다.")
 
-    score = float(np.clip(score, 0.25, 0.99))
+    score = float(np.clip(score, 0.30, 0.99))
 
     if score >= 0.85:
         level = "높음"
