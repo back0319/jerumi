@@ -3,9 +3,16 @@ from typing import Any
 from pydantic import BaseModel, field_validator
 
 
+def normalize_required_text(value: Any) -> str:
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError("product_name is required")
+    return normalized
+
+
 class FoundationCreate(BaseModel):
     brand: str
-    product_name: str = ""
+    product_name: str
     shade_code: str = ""
     shade_name: str
     L_value: float
@@ -18,10 +25,12 @@ class FoundationCreate(BaseModel):
     @field_validator("undertone", mode="before")
     @classmethod
     def normalize_undertone(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip().upper()
-        return normalized or None
+        return None
+
+    @field_validator("product_name", mode="before")
+    @classmethod
+    def normalize_product_name(cls, value: Any) -> str:
+        return normalize_required_text(value)
 
 
 class FoundationUpdate(BaseModel):
@@ -39,10 +48,14 @@ class FoundationUpdate(BaseModel):
     @field_validator("undertone", mode="before")
     @classmethod
     def normalize_undertone(cls, value: Any) -> str | None:
+        return None
+
+    @field_validator("product_name", mode="before")
+    @classmethod
+    def normalize_product_name(cls, value: Any) -> str | None:
         if value is None:
             return None
-        normalized = str(value).strip().upper()
-        return normalized or None
+        return normalize_required_text(value)
 
 
 class FoundationOut(BaseModel):
@@ -111,6 +124,6 @@ class FoundationAnalysisResult(BaseModel):
     a_value: float
     b_value: float
     hex_color: str
-    undertone: str
+    undertone: str | None = None
     detection: FoundationDetectionResult | None = None
     confidence: FoundationAnalysisConfidence | None = None

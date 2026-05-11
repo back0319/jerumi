@@ -108,7 +108,7 @@ export interface FoundationAnalysisResult {
   a_value: number;
   b_value: number;
   hex_color: string;
-  undertone: string;
+  undertone: string | null;
   detection: FoundationDetectionResult | null;
   confidence: FoundationAnalysisConfidence | null;
 }

@@ -6,6 +6,8 @@
  * and we match measured RGB patches to these known LAB values.
  */
 
+import { getSrgbCanvasContext, getSrgbImageData } from "@/lib/canvasColor";
+
 // X-Rite ColorChecker Classic - first 6 patches (most useful for skin)
 // Full 24-patch can be added later
 export const COLORCHECKER_REFERENCE: {
@@ -2380,10 +2382,10 @@ function createScaledImageData(canvas: HTMLCanvasElement) {
     maxSide > DETECTION_MAX_DIMENSION ? DETECTION_MAX_DIMENSION / maxSide : 1;
 
   if (scale === 1) {
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const ctx = getSrgbCanvasContext(canvas, { willReadFrequently: true });
     return ctx
       ? {
-          imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+          imageData: getSrgbImageData(ctx, 0, 0, canvas.width, canvas.height),
           scale,
         }
       : null;
@@ -2392,13 +2394,14 @@ function createScaledImageData(canvas: HTMLCanvasElement) {
   const workingCanvas = document.createElement("canvas");
   workingCanvas.width = Math.max(1, Math.round(canvas.width * scale));
   workingCanvas.height = Math.max(1, Math.round(canvas.height * scale));
-  const workingContext = workingCanvas.getContext("2d", {
+  const workingContext = getSrgbCanvasContext(workingCanvas, {
     willReadFrequently: true,
   });
   if (!workingContext) return null;
   workingContext.drawImage(canvas, 0, 0, workingCanvas.width, workingCanvas.height);
   return {
-    imageData: workingContext.getImageData(
+    imageData: getSrgbImageData(
+      workingContext,
       0,
       0,
       workingCanvas.width,
@@ -2412,11 +2415,17 @@ export function detectColorCheckerFromCanvas(
   canvas: HTMLCanvasElement,
 ): ColorCheckerDetection | null {
   const scaled = createScaledImageData(canvas);
-  const sourceContext = canvas.getContext("2d", { willReadFrequently: true });
+  const sourceContext = getSrgbCanvasContext(canvas, { willReadFrequently: true });
   if (!scaled || !sourceContext) return null;
 
   const { imageData: scaledImageData, scale } = scaled;
-  const fullImageData = sourceContext.getImageData(0, 0, canvas.width, canvas.height);
+  const fullImageData = getSrgbImageData(
+    sourceContext,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
   const mask = buildDarkCardMask(
     scaledImageData.data,
     scaledImageData.width,

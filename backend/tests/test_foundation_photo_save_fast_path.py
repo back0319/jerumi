@@ -146,13 +146,13 @@ class FoundationPhotoSaveFastPathTests(unittest.TestCase):
 
         result = module._parse_analysis_result(
             '{"L_value":70.1,"a_value":5.2,"b_value":13.3,'
-            '"hex_color":"#c8a891","undertone":"WARM"}'
+            '"hex_color":"#c8a891","undertone":null}'
         )
 
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result.hex_color, "#c8a891")
-        self.assertEqual(result.undertone, "WARM")
+        self.assertIsNone(result.undertone)
 
     def test_save_from_photo_uses_cached_analysis_without_reextracting(self) -> None:
         module = load_foundations_module()
@@ -189,6 +189,7 @@ class FoundationPhotoSaveFastPathTests(unittest.TestCase):
         self.assertEqual(created.a_value, 5.2)
         self.assertEqual(created.b_value, 13.3)
         self.assertEqual(created.swatch_image_url, "https://example.test/swatch.jpg")
+        self.assertIsNone(created.undertone)
         self.assertEqual(storage_service.uploaded_image_bytes, b"jpeg-bytes")
 
 

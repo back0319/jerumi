@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import update
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, async_session, engine
+from app.models.foundation import Foundation
 from app.routers import analysis, auth, foundations
 
 logger = logging.getLogger(__name__)
@@ -15,6 +17,16 @@ logger = logging.getLogger(__name__)
 async def initialize_database() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def disable_existing_undertones() -> None:
+    async with async_session() as session:
+        await session.execute(
+            update(Foundation)
+            .where(Foundation.undertone.is_not(None))
+            .values(undertone=None)
+        )
+        await session.commit()
 
 
 @asynccontextmanager
@@ -27,6 +39,13 @@ async def lifespan(app: FastAPI):
             )
         except Exception as exc:
             logger.warning("Skipping startup database initialization: %s", exc)
+    try:
+        await asyncio.wait_for(
+            disable_existing_undertones(),
+            timeout=settings.DATABASE_CONNECT_TIMEOUT,
+        )
+    except Exception as exc:
+        logger.warning("Skipping undertone cleanup: %s", exc)
     yield
     await engine.dispose()
 

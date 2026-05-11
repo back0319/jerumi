@@ -29,6 +29,7 @@ import {
   SKIN_REGION_OVERLAY_STYLES,
 } from "@/lib/skinSampling";
 import { displayShade } from "@/lib/foundation";
+import { getSrgbCanvasContext, getSrgbImageData } from "@/lib/canvasColor";
 import type { AnalysisResponse, RecommendationItem } from "@/types";
 import CameraCapture from "@/components/CameraCapture";
 
@@ -41,6 +42,12 @@ type AnalysisOverlay = SkinOverlayBase & {
 
 const CHECKER_ACCEPTED_SCORE = 70;
 const EXPECTED_CHECKER_PATCH_COUNT = 24;
+let faceMeshModulePromise: Promise<any> | null = null;
+
+function loadFaceMeshModule() {
+  faceMeshModulePromise ??= import("@mediapipe/face_mesh");
+  return faceMeshModulePromise;
+}
 
 function getDeltaEBadgeClass(deltaE: number): string {
   if (deltaE <= 1.0) return "bg-green-100 text-green-700";
@@ -77,15 +84,18 @@ function getCheckerQuality(score: number): {
 }
 
 export default function ScanPage() {
-  const FACE_MESH_TIMEOUT_MS = 8000;
-  const INITIAL_VISIBLE_RECOMMENDATIONS = 4;
+  const FACE_MESH_TIMEOUT_MS = 6000;
+  const INITIAL_VISIBLE_RECOMMENDATIONS = 9;
+  const RECOMMENDATION_PAGE_SIZE = 6;
   const MAX_ANALYSIS_PIXELS = 10000;
   const MAX_REGION_ANALYSIS_PIXELS = 2500;
   const [step, setStep] = useState<Step>("upload");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAllRecommendations, setShowAllRecommendations] = useState(false);
+  const [visibleRecommendationCount, setVisibleRecommendationCount] = useState(
+    INITIAL_VISIBLE_RECOMMENDATIONS,
+  );
   const [skinExtraction, setSkinExtraction] = useState<SkinExtraction | null>(
     null,
   );
@@ -150,10 +160,10 @@ export default function ScanPage() {
       : []
     : (result?.recommendations ?? []);
   const visibleRecommendations = filterIsActive
-    ? baseRecommendationList
-    : showAllRecommendations
-      ? baseRecommendationList
-      : baseRecommendationList.slice(0, INITIAL_VISIBLE_RECOMMENDATIONS);
+    ? baseRecommendationList.slice(0, visibleRecommendationCount)
+    : baseRecommendationList.slice(0, visibleRecommendationCount);
+  const hasMoreRecommendations =
+    visibleRecommendations.length < baseRecommendationList.length;
   const checkerPatchCount = detectedChecker?.patches.length ?? 0;
   const checkerConfidence = detectedChecker
     ? Math.round(detectedChecker.confidence * 100)
@@ -170,13 +180,11 @@ export default function ScanPage() {
 
   const drawImageToCanvas = useCallback(
     (img: HTMLImageElement, canvas: HTMLCanvasElement) => {
-      // Modern phone cameras emit ~12 megapixel JPEGs. Feeding the raw
-      // resolution into MediaPipe FaceMesh, polygon-fill ROI extraction, and
-      // color checker detection makes mobile run for tens of seconds. Scale
-      // the processing canvas to a working max so every downstream pass
-      // operates on ~1.2MP at most. The backend caps skin samples at 10k
-      // pixels anyway so this loses no analysis fidelity.
-      const MAX_PROCESSING_DIMENSION = 1280;
+      // Keep desktop and mobile on the same working resolution so FaceMesh ROI
+      // coordinates, skin sampling, and ColorChecker detection are comparable
+      // across devices. Modern phone photos are often ~12MP, so this shared
+      // cap also keeps iPhone Safari responsive.
+      const MAX_PROCESSING_DIMENSION = 960;
       const longestSide = Math.max(img.naturalWidth, img.naturalHeight);
       const scale =
         longestSide > MAX_PROCESSING_DIMENSION
@@ -184,7 +192,7 @@ export default function ScanPage() {
           : 1;
       canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-      const ctx = canvas.getContext("2d");
+      const ctx = getSrgbCanvasContext(canvas);
       if (!ctx) return false;
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "medium";
@@ -203,7 +211,7 @@ export default function ScanPage() {
     previewCanvas.width = sourceCanvas.width;
     previewCanvas.height = sourceCanvas.height;
 
-    const ctx = previewCanvas.getContext("2d");
+    const ctx = getSrgbCanvasContext(previewCanvas);
     if (!ctx) return;
 
     ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -307,22 +315,96 @@ export default function ScanPage() {
     detectionTimeoutRef.current = null;
   }, []);
 
+  const runAnalysis = useCallback(
+    async (
+      extraction: SkinExtraction,
+      checker: ColorCheckerDetection | null,
+    ) => {
+      setStep("analyzing");
+      setError(null);
+      setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
+      setComparisonBrand(null);
+      setComparisonProduct(null);
+      setComparisonResult(null);
+      setComparisonError(null);
+      setBrandListError(null);
+      comparisonCacheRef.current.clear();
+      comparisonRequestIdRef.current += 1;
+
+      try {
+        const patches = buildCheckerPatchesFromDetection(checker);
+
+        const sampledSkinRegions = extraction.skinRegions
+          ? downsampleSkinRegions(
+              extraction.skinRegions,
+              MAX_REGION_ANALYSIS_PIXELS,
+            )
+          : null;
+        const pixels = sampledSkinRegions
+          ? downsamplePixels(
+              flattenSkinRegionPixels(sampledSkinRegions),
+              MAX_ANALYSIS_PIXELS,
+            )
+          : downsamplePixels(extraction.combinedPixels, MAX_ANALYSIS_PIXELS);
+
+        const baseRequestBody = {
+          skin_pixels_rgb: pixels,
+          skin_regions_rgb: sampledSkinRegions,
+          checker_patches: patches,
+        };
+        lastAnalyzeRequestRef.current = baseRequestBody;
+
+        const [response, brands] = await Promise.all([
+          apiPost<AnalysisResponse>("/analyze", {
+            ...baseRequestBody,
+            top_n: 200,
+          }),
+          apiGet<string[]>("/foundations/brands").catch(() => null),
+        ]);
+
+        if (brands) {
+          setAvailableBrands(brands);
+        } else {
+          setAvailableBrands([]);
+          setBrandListError(
+            "브랜드 목록을 불러오지 못해 상위 추천 브랜드만 표시합니다.",
+          );
+        }
+
+        setResult(response);
+        setStep("done");
+      } catch (err: any) {
+        setError(err.message || "분석 중 오류가 발생했습니다.");
+        setStep("checker");
+      }
+    },
+    [],
+  );
+
   const completeSkinExtraction = useCallback(
     (
       extractedSkin: SkinExtraction,
       overlay: AnalysisOverlay,
+      sourceCanvas: HTMLCanvasElement,
       nextError: string | null = null,
     ) => {
       detectionCompletedRef.current = true;
       clearDetectionTimeout();
+      const detectedColorChecker = detectColorCheckerFromCanvas(sourceCanvas);
+      const completedOverlay = {
+        ...overlay,
+        colorChecker: detectedColorChecker,
+      };
       setSkinExtraction(extractedSkin);
-      setAnalysisOverlay(overlay);
-      setDetectedChecker(overlay.colorChecker);
-      redrawPreviewCanvas(overlay);
+      setAnalysisOverlay(completedOverlay);
+      setDetectedChecker(detectedColorChecker);
+      setCheckerImageStatus("ready");
+      setCheckerImageError(null);
+      redrawPreviewCanvas(completedOverlay);
       setError(nextError);
-      setStep("checker");
+      void runAnalysis(extractedSkin, detectedColorChecker);
     },
-    [clearDetectionTimeout, redrawPreviewCanvas],
+    [clearDetectionTimeout, redrawPreviewCanvas, runAnalysis],
   );
 
   const handleImageUpload = useCallback(
@@ -428,7 +510,7 @@ export default function ScanPage() {
     ) => {
       if (detectionCompletedRef.current) return;
 
-      const ctx = canvas.getContext("2d");
+      const ctx = getSrgbCanvasContext(canvas, { willReadFrequently: true });
       if (!ctx) {
         setError("이미지를 처리하지 못했습니다. 다시 시도해주세요.");
         return;
@@ -440,7 +522,13 @@ export default function ScanPage() {
       const rectY = Math.round(h * 0.46);
       const rectWidth = Math.round(w * 0.3);
       const rectHeight = Math.round(h * 0.24);
-      const imageData = ctx.getImageData(rectX, rectY, rectWidth, rectHeight);
+      const imageData = getSrgbImageData(
+        ctx,
+        rectX,
+        rectY,
+        rectWidth,
+        rectHeight,
+      );
       const pixels: number[][] = [];
 
       for (let i = 0; i < imageData.data.length; i += 4) {
@@ -469,7 +557,7 @@ export default function ScanPage() {
           mode: "fallback",
           pixelCount: pixels.length,
           sampleHex: brightSkinPreviewHex(pixels),
-          colorChecker: detectColorCheckerFromCanvas(canvas),
+          colorChecker: null,
           regionPixelCounts: {},
           polygons: [
             {
@@ -495,6 +583,7 @@ export default function ScanPage() {
             height: rectHeight,
           },
         },
+        canvas,
         nextError,
       );
     },
@@ -509,15 +598,14 @@ export default function ScanPage() {
         fallbackExtract(canvas);
       }, FACE_MESH_TIMEOUT_MS);
 
-      // @ts-ignore - MediaPipe loaded from CDN
-      const { FaceMesh } = await import("@mediapipe/face_mesh");
+      const { FaceMesh } = await loadFaceMeshModule();
       const faceMesh = new FaceMesh({
         locateFile: (file: string) =>
           `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
       });
       faceMesh.setOptions({
         maxNumFaces: 1,
-        refineLandmarks: true,
+        refineLandmarks: false,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5,
       });
@@ -562,10 +650,11 @@ export default function ScanPage() {
             mode: "facemesh",
             pixelCount: pixels.length,
             sampleHex: brightSkinPreviewHex(pixels),
-            colorChecker: detectColorCheckerFromCanvas(canvas),
+            colorChecker: null,
             polygons,
             regionPixelCounts: getSkinRegionPixelCounts(skinRegions),
           },
+          canvas,
         );
       });
 
@@ -579,65 +668,9 @@ export default function ScanPage() {
     }
   };
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = () => {
     if (!skinExtraction) return;
-    setStep("analyzing");
-    setError(null);
-    setShowAllRecommendations(false);
-    setComparisonBrand(null);
-    setComparisonProduct(null);
-    setComparisonResult(null);
-    setComparisonError(null);
-    setBrandListError(null);
-    comparisonCacheRef.current.clear();
-    comparisonRequestIdRef.current += 1;
-
-    try {
-      const patches = buildCheckerPatchesFromDetection(detectedChecker);
-
-      const sampledSkinRegions = skinExtraction.skinRegions
-        ? downsampleSkinRegions(
-            skinExtraction.skinRegions,
-            MAX_REGION_ANALYSIS_PIXELS,
-          )
-        : null;
-      const pixels = sampledSkinRegions
-        ? downsamplePixels(
-            flattenSkinRegionPixels(sampledSkinRegions),
-            MAX_ANALYSIS_PIXELS,
-          )
-        : downsamplePixels(skinExtraction.combinedPixels, MAX_ANALYSIS_PIXELS);
-
-      const baseRequestBody = {
-        skin_pixels_rgb: pixels,
-        skin_regions_rgb: sampledSkinRegions,
-        checker_patches: patches,
-      };
-      lastAnalyzeRequestRef.current = baseRequestBody;
-
-      const [response, brands] = await Promise.all([
-        apiPost<AnalysisResponse>("/analyze", {
-          ...baseRequestBody,
-          top_n: 10,
-        }),
-        apiGet<string[]>("/foundations/brands").catch(() => null),
-      ]);
-
-      if (brands) {
-        setAvailableBrands(brands);
-      } else {
-        setAvailableBrands([]);
-        setBrandListError(
-          "브랜드 목록을 불러오지 못해 상위 추천 브랜드만 표시합니다.",
-        );
-      }
-
-      setResult(response);
-      setStep("done");
-    } catch (err: any) {
-      setError(err.message || "분석 중 오류가 발생했습니다.");
-      setStep("checker");
-    }
+    void runAnalysis(skinExtraction, detectedChecker);
   };
 
   const handleSelectComparisonBrand = useCallback(
@@ -646,6 +679,7 @@ export default function ScanPage() {
       setComparisonProduct(null);
       setComparisonResult(null);
       setComparisonError(null);
+      setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
       const requestId = ++comparisonRequestIdRef.current;
 
       if (!brand || !result) {
@@ -698,7 +732,7 @@ export default function ScanPage() {
     setCheckerImageError(null);
     setResult(null);
     setError(null);
-    setShowAllRecommendations(false);
+    setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
     setAvailableBrands([]);
     setBrandListError(null);
     comparisonCacheRef.current.clear();
@@ -716,7 +750,7 @@ export default function ScanPage() {
     setError(null);
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
-    setShowAllRecommendations(false);
+    setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
     setAvailableBrands([]);
     setBrandListError(null);
     comparisonCacheRef.current.clear();
@@ -726,12 +760,20 @@ export default function ScanPage() {
   useApiPrewarm("/analysis-ready");
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadFaceMeshModule().catch(() => undefined);
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     setDetectedChecker(null);
     setCheckerImageStatus("idle");
     setCheckerImageError(null);
     setSkinExtraction(null);
     setAnalysisOverlay(null);
     setResult(null);
+    setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
     setAvailableBrands([]);
     setBrandListError(null);
     comparisonCacheRef.current.clear();
@@ -1139,21 +1181,9 @@ export default function ScanPage() {
               <p className="mt-1 text-sm text-gray-500">
                 {filterIsActive
                   ? "선택한 브랜드/제품의 호수를 ΔE 오름차순으로 보여줍니다."
-                  : `기본으로 상위 ${INITIAL_VISIBLE_RECOMMENDATIONS}개만 보여주고 필요하면 전체를 펼칩니다.`}
+                  : `기본으로 상위 ${INITIAL_VISIBLE_RECOMMENDATIONS}개를 보여주고, 아래에서 ${RECOMMENDATION_PAGE_SIZE}개씩 더 볼 수 있습니다.`}
               </p>
             </div>
-            {!filterIsActive &&
-              result.recommendations.length >
-                INITIAL_VISIBLE_RECOMMENDATIONS && (
-                <button
-                  onClick={() => setShowAllRecommendations((prev) => !prev)}
-                  className="text-sm font-medium text-rose-600 hover:text-rose-700"
-                >
-                  {showAllRecommendations
-                    ? "상위 추천만 보기"
-                    : `전체 ${result.recommendations.length}개 보기`}
-                </button>
-              )}
           </div>
 
           <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
@@ -1173,9 +1203,10 @@ export default function ScanPage() {
             </select>
             <select
               value={comparisonProduct ?? ""}
-              onChange={(event) =>
-                setComparisonProduct(event.target.value || null)
-              }
+              onChange={(event) => {
+                setComparisonProduct(event.target.value || null);
+                setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
+              }}
               disabled={
                 !comparisonBrand ||
                 !comparisonResult ||
@@ -1245,11 +1276,11 @@ export default function ScanPage() {
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {visibleRecommendations.map((rec, i) => (
               <div
                 key={rec.id}
-                className="rounded-xl border bg-white p-4 shadow-sm transition hover:shadow-md"
+                className="rounded-xl border bg-white p-3 shadow-sm transition hover:shadow-md sm:p-4"
               >
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <span className="rounded bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-600">
@@ -1265,20 +1296,20 @@ export default function ScanPage() {
                 </div>
 
                 {/* Color comparison */}
-                <div className="mb-3 grid grid-cols-2 gap-2">
-                  <div className="text-center">
+                <div className="mb-3 flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5">
                     <div
-                      className="aspect-square w-full rounded-lg border shadow-inner"
+                      className="h-10 w-10 rounded-md border shadow-inner"
                       style={{ backgroundColor: result.skin_hex }}
                     />
-                    <p className="mt-1 text-[11px] text-gray-400">내 피부</p>
+                    <span className="text-[11px] text-gray-400">내 피부</span>
                   </div>
-                  <div className="text-center">
+                  <div className="flex items-center gap-1.5">
                     <div
-                      className="aspect-square w-full rounded-lg border shadow-inner"
+                      className="h-10 w-10 rounded-md border shadow-inner"
                       style={{ backgroundColor: rec.hex_color }}
                     />
-                    <p className="mt-1 text-[11px] text-gray-400">추천색</p>
+                    <span className="text-[11px] text-gray-400">추천색</span>
                   </div>
                 </div>
 
@@ -1301,6 +1332,27 @@ export default function ScanPage() {
               </div>
             ))}
           </div>
+
+          {hasMoreRecommendations && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() =>
+                  setVisibleRecommendationCount((current) =>
+                    current + RECOMMENDATION_PAGE_SIZE,
+                  )
+                }
+                className="rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                더보기{" "}
+                {Math.min(
+                  RECOMMENDATION_PAGE_SIZE,
+                  baseRecommendationList.length - visibleRecommendations.length,
+                )}
+                개
+              </button>
+            </div>
+          )}
 
           <div className="mt-4 text-center">
             <button

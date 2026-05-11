@@ -149,12 +149,13 @@ export function AdminPhotoAnalysisForm({
           required
         />
         <input
-          placeholder="제품명"
+          placeholder="제품명 *"
           value={photoMeta.product_name}
           onChange={(event) =>
             onPhotoMetaFieldChange("product_name", event.target.value)
           }
           className="rounded border px-3 py-2 text-sm"
+          required
         />
         <input
           placeholder="색상명/호수 * (예: 21호 / Vanilla 1.5)"
@@ -350,8 +351,7 @@ export function AdminPhotoAnalysisForm({
                       {analysisResult.b_value}
                     </p>
                     <p className="truncate text-gray-500">
-                      HEX: {analysisResult.hex_color} · 언더톤:{" "}
-                      {analysisResult.undertone}
+                      HEX: {analysisResult.hex_color}
                     </p>
                   </div>
                 </div>
@@ -449,10 +449,11 @@ function ManualEntryPanel({
         required
       />
       <input
-        placeholder="제품명"
+        placeholder="제품명 *"
         value={form.product_name}
         onChange={(event) => onFieldChange("product_name", event.target.value)}
         className="rounded border px-3 py-2 text-sm"
+        required
       />
       <input
         placeholder="색상명/호수 * (예: 21호 / Vanilla 1.5)"
@@ -497,20 +498,10 @@ function ManualEntryPanel({
         onChange={(event) => onFieldChange("hex_color", event.target.value)}
         className="rounded border px-3 py-2 text-sm"
       />
-      <select
-        value={form.undertone}
-        onChange={(event) => onFieldChange("undertone", event.target.value)}
-        className="rounded border px-3 py-2 text-sm"
-      >
-        <option value="">언더톤 비워두기</option>
-        <option value="WARM">Warm</option>
-        <option value="COOL">Cool</option>
-        <option value="NEUTRAL">Neutral</option>
-      </select>
       <button
         type="submit"
         disabled={isSaving}
-        className="rounded bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:opacity-50"
+        className="rounded bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:opacity-50 xl:col-start-3"
       >
         {isSaving ? "저장 중..." : "저장"}
       </button>

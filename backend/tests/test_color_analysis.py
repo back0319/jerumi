@@ -74,6 +74,21 @@ class ColorAnalysisRegressionTests(unittest.TestCase):
 
         self.assertGreaterEqual(corrected_lab[0], base_lab[0] - 1.0)
 
+    def test_skin_lightness_trim_prefers_well_lit_pixels(self) -> None:
+        well_lit_rgb = [198, 164, 145]
+        pixels = (
+            make_pixels([136, 108, 96], 180, jitter=3)
+            + make_pixels(well_lit_rgb, 120, jitter=3)
+            + make_pixels([235, 218, 205], 10, jitter=1)
+        )
+
+        representative = trimmed_mean_lab(rgb_pixels_to_lab(pixels))
+        well_lit_lab = rgb_pixels_to_lab([well_lit_rgb])[0]
+        shadow_lab = rgb_pixels_to_lab([[136, 108, 96]])[0]
+
+        self.assertGreater(representative[0], shadow_lab[0] + 10.0)
+        self.assertLess(delta_e_between(representative, well_lit_lab), 5.0)
+
     def test_skin_correction_is_gentler_than_full_chart_correction(self) -> None:
         patches = [
             ColorCheckerPatch(

@@ -6,6 +6,8 @@
  * redness than a broad cheek sample.
  */
 
+import { getSrgbCanvasContext, getSrgbImageData } from "@/lib/canvasColor";
+
 export type FaceMeshLandmark = {
   x: number;
   y: number;
@@ -198,12 +200,12 @@ export function extractSkinPixelsByRegion(
   landmarks: FaceMeshLandmark[],
   regions: FaceRegionDefinition[] = SKIN_REGIONS,
 ): SkinRegionPixels {
-  const ctx = canvas.getContext("2d");
+  const ctx = getSrgbCanvasContext(canvas, { willReadFrequently: true });
   if (!ctx) return createEmptySkinRegionPixels();
 
   const width = canvas.width;
   const height = canvas.height;
-  const imageData = ctx.getImageData(0, 0, width, height);
+  const imageData = getSrgbImageData(ctx, 0, 0, width, height);
   const polygons = buildRegionPolygons(canvas, landmarks, regions);
   const regionPixels = createEmptySkinRegionPixels();
 

@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { apiAuthPostFormData } from "@/lib/api";
+import { getSrgbCanvasContext } from "@/lib/canvasColor";
 import { pairwiseDeltaStats } from "@/lib/labDelta";
 import type {
   ActiveAdminPanel,
@@ -81,7 +82,7 @@ async function resizePhotoForStorageUpload(file: File): Promise<File> {
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(width * scale));
     canvas.height = Math.max(1, Math.round(height * scale));
-    const ctx = canvas.getContext("2d");
+    const ctx = getSrgbCanvasContext(canvas);
     if (!ctx) {
       return file;
     }
@@ -110,7 +111,6 @@ function serializeCachedAnalysis(result: FoundationAnalysisResult): string {
     a_value: result.a_value,
     b_value: result.b_value,
     hex_color: result.hex_color,
-    undertone: result.undertone,
   });
 }
 
@@ -242,7 +242,7 @@ export function usePhotoFoundationWorkflow({
 
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
-      const ctx = canvas.getContext("2d");
+      const ctx = getSrgbCanvasContext(canvas);
       if (!ctx) return;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -296,7 +296,7 @@ export function usePhotoFoundationWorkflow({
 
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
-    const ctx = canvas.getContext("2d");
+    const ctx = getSrgbCanvasContext(canvas);
     if (!ctx) return;
     ctx.drawImage(image, 0, 0);
     drawPhotoCanvas();
@@ -429,8 +429,8 @@ export function usePhotoFoundationWorkflow({
   const saveFromPhoto = useCallback(async () => {
     if (!photoFile || !token || !analysisResult) return;
 
-    if (!photoMeta.brand || !photoMeta.shade_name) {
-      setPhotoError("브랜드와 색상명은 필수 입력 항목입니다.");
+    if (!photoMeta.brand || !photoMeta.product_name || !photoMeta.shade_name) {
+      setPhotoError("브랜드, 제품명, 색상명은 필수 입력 항목입니다.");
       return;
     }
 

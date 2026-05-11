@@ -31,35 +31,33 @@ export function AdminFoundationTable({
         {foundations.map((foundation) => (
           <div key={foundation.id} className="space-y-3 px-4 py-4">
             <div className="flex items-start gap-3">
-              <div
-                className="h-10 w-10 shrink-0 rounded-lg border"
-                style={{ backgroundColor: foundation.hex_color }}
-              />
+              <div className="w-16 shrink-0">
+                <div
+                  className="mx-auto h-10 w-10 rounded-lg border"
+                  style={{ backgroundColor: foundation.hex_color }}
+                />
+                <p className="mt-1 truncate text-center font-mono text-[10px] text-gray-400">
+                  {foundation.hex_color}
+                </p>
+              </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-gray-900">
                   {foundation.brand}
                 </p>
                 <p className="truncate text-sm text-gray-700">
+                  {foundation.product_name || "-"}
+                </p>
+                <p className="truncate text-xs text-gray-400">
                   {displayShade(foundation)}
                 </p>
-                {foundation.product_name && (
-                  <p className="truncate text-xs text-gray-400">
-                    {foundation.product_name}
-                  </p>
-                )}
               </div>
-              <span className="rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-600">
-                {foundation.undertone || "-"}
-              </span>
             </div>
             <div className="rounded-lg bg-gray-50 px-3 py-2 font-mono text-[11px] text-gray-600">
               L* {foundation.L_value} / a* {foundation.a_value} / b*{" "}
               {foundation.b_value}
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-mono text-gray-400">
-                {foundation.hex_color}
-              </span>
+              <span />
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => onEdit(foundation)}
@@ -85,10 +83,10 @@ export function AdminFoundationTable({
           <thead className="bg-gray-50">
             <tr>
               <th className="w-16 px-4 py-3 text-left">색상</th>
-              <th className="w-[32%] px-4 py-3 text-left">브랜드 / 색상</th>
-              <th className="w-[24%] px-4 py-3 text-left">LAB</th>
-              <th className="w-20 px-4 py-3 text-left">톤</th>
-              <th className="w-28 px-4 py-3 text-left">HEX</th>
+              <th className="w-[42%] px-4 py-3 text-left">
+                브랜드 / 제품 / 색상
+              </th>
+              <th className="w-[28%] px-4 py-3 text-left">LAB</th>
               <th className="w-24 px-4 py-3" />
             </tr>
           </thead>
@@ -96,31 +94,30 @@ export function AdminFoundationTable({
             {foundations.map((foundation) => (
               <tr key={foundation.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
-                  <div
-                    className="h-8 w-8 rounded border"
-                    style={{ backgroundColor: foundation.hex_color }}
-                  />
+                  <div className="w-14">
+                    <div
+                      className="mx-auto h-8 w-8 rounded border"
+                      style={{ backgroundColor: foundation.hex_color }}
+                    />
+                    <p className="mt-1 truncate text-center font-mono text-[10px] text-gray-400">
+                      {foundation.hex_color}
+                    </p>
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <p className="truncate font-medium text-gray-900">
                     {foundation.brand}
                   </p>
                   <p className="truncate text-gray-700">
+                    {foundation.product_name || "-"}
+                  </p>
+                  <p className="truncate text-xs text-gray-400">
                     {displayShade(foundation)}
                   </p>
-                  {foundation.product_name && (
-                    <p className="truncate text-xs text-gray-400">
-                      {foundation.product_name}
-                    </p>
-                  )}
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-600">
                   L* {foundation.L_value} / a* {foundation.a_value} / b*{" "}
                   {foundation.b_value}
-                </td>
-                <td className="px-4 py-3">{foundation.undertone || "-"}</td>
-                <td className="px-4 py-3 font-mono text-xs">
-                  {foundation.hex_color}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3">
                   <button

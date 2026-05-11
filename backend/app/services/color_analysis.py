@@ -26,9 +26,11 @@ from app.utils.color_math import (
 
 _MIN_CORRECTED_LUMINANCE_RATIO = 0.98
 _SKIN_CORRECTION_STRENGTH = 0.55
+_SKIN_LIGHTNESS_LOWER_PERCENTILE = 65.0
+_SKIN_LIGHTNESS_UPPER_PERCENTILE = 98.0
 _REGION_REDNESS_TRIM_PERCENTILE = 90.0
 _REGION_RED_OUTLIER_DELTA = 10.0
-_REGION_SHADOW_OUTLIER_DELTA = 4.0
+_REGION_SHADOW_OUTLIER_DELTA = 2.5
 
 
 @dataclass
@@ -191,16 +193,16 @@ def _trim_lightness(lab: np.ndarray) -> np.ndarray:
 
     When a face ROI is partially in shadow, shadow pixels often dominate the
     distribution. A symmetric trim (e.g., p10-p90) preserves them as the bulk,
-    so the medoid still lands in shadow. We bias toward the upper half of the
-    L* distribution while still excluding clipped specular highlights.
+    so the representative can still land in shadow. We bias toward the brighter
+    part of the L* distribution while still excluding clipped specular highlights.
     """
     candidates = lab
     if len(candidates) < 20:
         return candidates
 
     lightness = candidates[:, 0]
-    lower = np.percentile(lightness, 50)
-    upper = np.percentile(lightness, 97)
+    lower = np.percentile(lightness, _SKIN_LIGHTNESS_LOWER_PERCENTILE)
+    upper = np.percentile(lightness, _SKIN_LIGHTNESS_UPPER_PERCENTILE)
     lightness_mask = (lightness >= lower) & (lightness <= upper)
 
     if np.sum(lightness_mask) >= 10:

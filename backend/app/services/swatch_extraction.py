@@ -381,15 +381,6 @@ def _extract_swatch(
     )
 
 
-def _classify_undertone(a_star: float, b_star: float) -> str:
-    """Classify undertone from CIELAB a* and b* values."""
-    if a_star > 2.0 and b_star > 5.0:
-        return "WARM"
-    if a_star < -1.0 or b_star < 0.0:
-        return "COOL"
-    return "NEUTRAL"
-
-
 def extract_swatch_from_image(
     image_bytes: bytes,
     checker_patches: list[ColorCheckerPatch] | None = None,
@@ -446,7 +437,7 @@ def extract_swatch_from_image(
         "a_value": round(a_value, 2),
         "b_value": round(b_value, 2),
         "hex_color": lab_to_hex(mean_lab),
-        "undertone": _classify_undertone(a_value, b_value),
+        "undertone": None,
         "detection": {
             "color_checker": (
                 checker_detection.to_dict() if checker_detection is not None else None

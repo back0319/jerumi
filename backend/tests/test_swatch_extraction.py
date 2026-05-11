@@ -88,7 +88,7 @@ class SwatchExtractionTests(unittest.TestCase):
         )
 
         self.assertLess(delta_e_between(actual_lab, expected_lab), 4.0)
-        self.assertEqual(result["undertone"], "WARM")
+        self.assertIsNone(result["undertone"])
 
     def test_detect_color_checker_from_rotated_synthetic_card(self) -> None:
         image = Image.new("RGB", (720, 720), (248, 245, 241))

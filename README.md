@@ -1,6 +1,6 @@
 # 제루미
 
-현재 기준 버전: `v1.3.5`
+현재 기준 버전: `v1.4.0`
 
 제루미는 얼굴 사진 1장으로 대표 피부색을 추정하고, 현재 저장된 파운데이션 데이터 중에서 색이 가장 가까운 제품을 추천하는 서비스입니다.
 
@@ -35,6 +35,16 @@
 컬러체커가 함께 찍힌 사진에서는 카드 외곽과 내부 24개 패치 격자를 자동으로 찾고, 측정된 패치 RGB를 표준 ColorChecker LAB 값에 맞춰 XYZ 보정 행렬을 계산합니다. 카드가 머리카락이나 옷처럼 어두운 영역과 붙어 보이는 경우에는 검은 카드 body 대신 6x4 컬러 패치 격자 자체를 찾는 fallback을 사용합니다.
 
 ## 현재 릴리스 요약
+
+### `v1.4.0`
+
+- `/scan` 피부 분석을 업로드/촬영 후 **피부 영역 추출 → 컬러체커 감지 → 분석 요청 → 결과 표시**까지 한 번에 이어지도록 변경. 기존 컬러체커 확인 단계는 분석 실패 시 재시도/fallback 경로로 남겼습니다.
+- 모바일/PC 분석 결과 차이를 줄이기 위해 canvas 2D 컨텍스트와 `getImageData`를 가능한 한 `srgb` 색공간으로 고정하는 공통 유틸을 추가하고, FaceMesh/컬러체커/피부 ROI/관리자 분석 경로에 적용했습니다.
+- 모바일 Safari 부담을 줄이기 위해 분석용 캔버스 장변을 디바이스와 무관하게 960px로 통일하고, FaceMesh 모듈 로딩을 지연시켜 첫 화면 렌더와 이미지 선택 전 작업량을 줄였습니다.
+- 추천 결과 기본 노출을 9개로 늘리고, PC에서는 한 줄에 3개씩 보이도록 조정. 하단 "더보기"는 6개 단위로 추가 노출하며 추천 카드의 색상 박스 크기를 줄였습니다.
+- 언더톤 자동 분석/저장을 비활성화했습니다. 신규/수정/스와치 분석 응답에서 `undertone`은 `null`로 정규화되고, backend startup 시 기존 DB의 `undertone` 값도 `NULL`로 정리합니다.
+- 관리자 페이지에서 제품명을 수정할 수 있게 하고, 신규 제품명은 필수값으로 검증합니다. 화장품 목록은 브랜드 → 제품명 → 색상 순서로 보이며, HEX 값은 색상 사각형 아래에 표시합니다.
+- `APP_VERSION` 및 frontend package 버전을 `v1.4.0` / `1.4.0`으로 갱신. 별도 Supabase migration 파일은 없지만, backend startup에서 기존 `undertone` 값을 정리합니다.
 
 ### `v1.3.5`
 
@@ -300,6 +310,48 @@ npx vercel@latest dev -L
 
 이 방식은 `/api/*`를 포함한 실제 배포 라우팅과 가장 비슷하게 확인할 때 유용합니다.
 
+## 배포 전 로컬 점검
+
+기본 회귀 확인:
+
+```bash
+cd frontend
+npx tsc --noEmit
+
+cd ..
+python3 -m pytest backend/tests
+```
+
+Docker로 DB와 backend를 실제에 가깝게 확인:
+
+```bash
+docker compose up -d postgres
+docker compose run -d --name jerumi-backend-test --no-deps -p 8000:8000 \
+  -e DATABASE_URL=postgresql+asyncpg://skinmatch:skinmatch_dev@postgres:5432/skinmatch \
+  -e AUTO_CREATE_TABLES=true \
+  -e JWT_SECRET=dev-secret-change-in-production \
+  -e ADMIN_USERNAME=admin \
+  -e ADMIN_PASSWORD=admin1234 \
+  -e CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000 \
+  backend uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+확인 예:
+
+```bash
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/auth/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data 'username=admin&password=admin1234'
+```
+
+프론트만 별도 포트에서 backend에 붙여 확인:
+
+```bash
+cd frontend
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev -- --port 3002
+```
+
 ## 주요 API
 
 운영 기준 공개 경로는 `/api/*` 입니다.
@@ -353,7 +405,7 @@ python -m app.utils.seed
 변경 후 최소 확인 항목:
 
 1. `npm run build`
-2. `python -m unittest discover -s backend/tests -p "test_*.py"`
+2. `python3 -m pytest backend/tests`
 3. `GET /api/health`
 4. `/scan`에서 분석 성공
 5. `/admin` 로그인 및 foundation CRUD
@@ -364,7 +416,7 @@ python -m app.utils.seed
 
 현재 운영 점검 메모:
 
-- 이번 `v1.3.5` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
+- 이번 `v1.4.0` 변경은 별도 Supabase migration 파일이 없지만, backend startup에서 기존 `undertone` 값을 `NULL`로 정리합니다.
 - Supabase Storage 업로드/삭제는 backend에서만 `SUPABASE_SERVICE_ROLE_KEY`를 사용합니다. 이 값은 절대 브라우저로 노출하면 안 됩니다.
 - Supabase `public.foundations`는 RLS를 활성화하고, 브라우저 직접 접근용 정책은 만들지 않습니다. 앱은 backend API를 통해서만 foundation 데이터를 읽고 씁니다.
 - foundation 삭제 시 Storage object 정리 확인

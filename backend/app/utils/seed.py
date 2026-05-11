@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.database import Base, async_session, engine
 from app.models.foundation import Foundation
-from app.services.swatch_extraction import _classify_undertone
 
 
 def image_to_lab(image_path: str) -> tuple[float, float, float, str]:
@@ -61,18 +60,6 @@ def image_to_lab(image_path: str) -> tuple[float, float, float, str]:
     return float(mean_lab[0]), float(mean_lab[1]), float(mean_lab[2]), hex_color
 
 
-def classify_seed_undertone(shade_name: str, a_star: float, b_star: float) -> str:
-    normalized = shade_name.upper().replace(" ", "")
-
-    if any(token in normalized for token in ("COOL", "PINK", "PETAL")):
-        return "COOL"
-
-    if any(token in normalized for token in ("WARM", "GINGER", "HONEY", "TAN")):
-        return "WARM"
-
-    return _classify_undertone(a_star, b_star)
-
-
 def iter_shade_image_records(shade_dir: Path) -> list[dict]:
     records: list[dict] = []
 
@@ -98,7 +85,7 @@ def iter_shade_image_records(shade_dir: Path) -> list[dict]:
                     "a_value": round(a, 2),
                     "b_value": round(b, 2),
                     "hex_color": hex_color,
-                    "undertone": classify_seed_undertone(shade_name, a, b),
+                    "undertone": None,
                 }
             )
 
@@ -141,7 +128,7 @@ async def seed():
                 f"L={record['L_value']:.2f} "
                 f"a={record['a_value']:.2f} "
                 f"b={record['b_value']:.2f} "
-                f"({record['hex_color']}, {record['undertone']})"
+                f"({record['hex_color']})"
             )
 
         await session.commit()

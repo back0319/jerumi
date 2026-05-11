@@ -7,7 +7,6 @@ export type ManualFoundationFormValues = {
   a_value: number;
   b_value: number;
   hex_color: string;
-  undertone: string;
 };
 
 export type PhotoMetaValues = {
@@ -34,7 +33,6 @@ export function createDefaultManualForm(): ManualFoundationFormValues {
     a_value: 0,
     b_value: 0,
     hex_color: "#000000",
-    undertone: "",
   };
 }
 

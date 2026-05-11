@@ -55,10 +55,17 @@ export function AdminManualFoundationForm({
           required
         />
         <input
+          placeholder="제품명"
+          value={form.product_name}
+          onChange={(event) => updateField("product_name", event.target.value)}
+          className="rounded border px-3 py-2 md:col-span-2"
+          required
+        />
+        <input
           placeholder="색상명/호수 (예: 21호 / Vanilla 1.5)"
           value={form.shade_name}
           onChange={(event) => updateField("shade_name", event.target.value)}
-          className="rounded border px-3 py-2 md:col-span-2"
+          className="rounded border px-3 py-2 xl:col-span-2"
           required
         />
         <input
@@ -97,19 +104,9 @@ export function AdminManualFoundationForm({
           onChange={(event) => updateField("hex_color", event.target.value)}
           className="rounded border px-3 py-2"
         />
-        <select
-          value={form.undertone}
-          onChange={(event) => updateField("undertone", event.target.value)}
-          className="rounded border px-3 py-2"
-        >
-          <option value="">비워두기</option>
-          <option value="WARM">Warm</option>
-          <option value="COOL">Cool</option>
-          <option value="NEUTRAL">Neutral</option>
-        </select>
         <button
           disabled={isSavingManual}
-          className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+          className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50 xl:col-start-3"
         >
           {isSavingManual
             ? editingFoundationId === null

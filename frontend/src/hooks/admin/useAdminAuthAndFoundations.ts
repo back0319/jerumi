@@ -4,6 +4,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type Dispatch,
   type FormEvent,
@@ -40,6 +41,11 @@ function sortFoundations(items: readonly Foundation[]) {
       return byBrand;
     }
 
+    const byProduct = left.product_name.localeCompare(right.product_name, "ko");
+    if (byProduct !== 0) {
+      return byProduct;
+    }
+
     return left.shade_name.localeCompare(right.shade_name, "ko");
   });
 }
@@ -74,10 +80,14 @@ export function useAdminAuthAndFoundations({
   );
   const [isSavingManual, setIsSavingManual] = useState(false);
 
-  const brands = buildBrandList(allFoundations);
-  const foundations = filterBrand
-    ? allFoundations.filter((foundation) => foundation.brand === filterBrand)
-    : allFoundations;
+  const brands = useMemo(() => buildBrandList(allFoundations), [allFoundations]);
+  const foundations = useMemo(
+    () =>
+      filterBrand
+        ? allFoundations.filter((foundation) => foundation.brand === filterBrand)
+        : allFoundations,
+    [allFoundations, filterBrand],
+  );
 
   const resetManualState = useCallback(() => {
     setEditingFoundationId(null);
@@ -183,7 +193,6 @@ export function useAdminAuthAndFoundations({
         a_value: foundation.a_value,
         b_value: foundation.b_value,
         hex_color: foundation.hex_color,
-        undertone: foundation.undertone ?? "",
       });
       setActivePanel("manual-edit");
     },
@@ -216,7 +225,7 @@ export function useAdminAuthAndFoundations({
 
       const payload = {
         ...manualForm,
-        undertone: manualForm.undertone || null,
+        undertone: null,
       };
 
       try {

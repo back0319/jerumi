@@ -95,7 +95,7 @@ async def analyze_swatch(
 
     Upload a photo of foundation applied on white paper, optionally with
     ColorChecker patches for calibration. Returns LAB values, hex color,
-    and undertone classification without saving to the database.
+    without saving to the database.
     """
     contents = await image.read()
     if len(contents) > 20 * 1024 * 1024:
@@ -108,7 +108,7 @@ async def analyze_swatch(
 async def create_foundation_from_photo(
     image: UploadFile = File(...),
     brand: str = Form(...),
-    product_name: str = Form(""),
+    product_name: str = Form(...),
     shade_name: str = Form(...),
     shade_code: str = Form(""),
     checker_patches: str | None = Form(None),
@@ -124,6 +124,10 @@ async def create_foundation_from_photo(
     contents = await image.read()
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image too large (max 20MB)")
+
+    product_name = product_name.strip()
+    if not product_name:
+        raise HTTPException(status_code=422, detail="product_name is required")
 
     result = _parse_analysis_result(analysis_result)
     if result is None:
@@ -151,7 +155,7 @@ async def create_foundation_from_photo(
         a_value=result.a_value,
         b_value=result.b_value,
         hex_color=result.hex_color,
-        undertone=result.undertone,
+        undertone=None,
         swatch_image_url=upload_result.public_url,
     )
     db.add(f)

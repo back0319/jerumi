@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { apiPost } from "@/lib/api";
+import { getSrgbCanvasContext, getSrgbImageData } from "@/lib/canvasColor";
 import {
   buildRegionPolygons,
   extractSkinPixelsByRegion,
@@ -106,7 +107,7 @@ export function useRoiValidationWorkflow({
     (image: HTMLImageElement, canvas: HTMLCanvasElement) => {
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
-      const ctx = canvas.getContext("2d");
+      const ctx = getSrgbCanvasContext(canvas);
       if (!ctx) return false;
 
       ctx.imageSmoothingEnabled = true;
@@ -126,7 +127,7 @@ export function useRoiValidationWorkflow({
     previewCanvas.width = sourceCanvas.width;
     previewCanvas.height = sourceCanvas.height;
 
-    const ctx = previewCanvas.getContext("2d");
+    const ctx = getSrgbCanvasContext(previewCanvas);
     if (!ctx) return;
 
     ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -199,7 +200,7 @@ export function useRoiValidationWorkflow({
     ) => {
       if (roiDetectionCompletedRef.current) return;
 
-      const ctx = canvas.getContext("2d");
+      const ctx = getSrgbCanvasContext(canvas, { willReadFrequently: true });
       if (!ctx) {
         setRoiError("이미지를 처리하지 못했습니다. 다시 시도해주세요.");
         setRoiImageStatus("error");
@@ -210,7 +211,13 @@ export function useRoiValidationWorkflow({
       const rectY = Math.round(canvas.height * 0.46);
       const rectWidth = Math.round(canvas.width * 0.3);
       const rectHeight = Math.round(canvas.height * 0.24);
-      const imageData = ctx.getImageData(rectX, rectY, rectWidth, rectHeight);
+      const imageData = getSrgbImageData(
+        ctx,
+        rectX,
+        rectY,
+        rectWidth,
+        rectHeight,
+      );
       const pixels: number[][] = [];
 
       for (let index = 0; index < imageData.data.length; index += 4) {
