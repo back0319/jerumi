@@ -118,7 +118,20 @@ async function decodeFileToProcessingCanvas(
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = pickSmoothingQuality(scale);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    try {
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    } catch {
+      return false;
+    }
+    // Verify the canvas isn't tainted — iOS Safari has historically tainted
+    // canvases drawn from ImageBitmap(Blob), which would later break FaceMesh
+    // and the fallback pixel reader. If it's tainted, abandon the fast path
+    // and let the <img>-onLoad route handle it.
+    try {
+      ctx.getImageData(0, 0, 1, 1);
+    } catch {
+      return false;
+    }
     return true;
   } finally {
     bitmap.close?.();
