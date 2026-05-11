@@ -1110,38 +1110,38 @@ export default function ScanPage() {
                       {result.correction_applied ? "보정 적용" : "보정 미적용"}
                     </span>
                   </div>
-                  <div className="flex items-start gap-3 rounded-lg bg-white p-2">
-                    <div className="flex shrink-0 overflow-hidden rounded-md border shadow-inner">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="flex items-center gap-3 rounded-lg bg-white p-2">
                       <div
-                        className="aspect-square w-16 sm:w-20"
+                        className="aspect-square w-16 shrink-0 rounded-md border shadow-inner sm:w-20"
                         style={{ backgroundColor: result.skin_hex_raw }}
                       />
-                      <div
-                        className="aspect-square w-16 sm:w-20"
-                        style={{ backgroundColor: result.skin_hex }}
-                      />
-                    </div>
-                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
                       <div className="min-w-0">
                         <p className="text-[11px] font-semibold text-gray-500">
                           보정 전
                         </p>
-                        <p className="truncate font-mono text-xs text-gray-700">
+                        <p className="font-mono text-xs text-gray-700">
                           {result.skin_hex_raw}
                         </p>
-                        <p className="mt-0.5 truncate font-mono text-[10px] text-gray-400">
+                        <p className="mt-0.5 font-mono text-[10px] text-gray-400">
                           L* {result.skin_lab_raw[0]} a*{" "}
                           {result.skin_lab_raw[1]} b* {result.skin_lab_raw[2]}
                         </p>
                       </div>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-lg bg-white p-2 ring-1 ring-rose-200">
+                      <div
+                        className="aspect-square w-16 shrink-0 rounded-md border shadow-inner sm:w-20"
+                        style={{ backgroundColor: result.skin_hex }}
+                      />
                       <div className="min-w-0">
                         <p className="text-[11px] font-semibold text-rose-600">
                           보정 후 (분석 사용)
                         </p>
-                        <p className="truncate font-mono text-xs text-gray-700">
+                        <p className="font-mono text-xs text-gray-700">
                           {result.skin_hex}
                         </p>
-                        <p className="mt-0.5 truncate font-mono text-[10px] text-gray-400">
+                        <p className="mt-0.5 font-mono text-[10px] text-gray-400">
                           L* {result.skin_lab[0]} a* {result.skin_lab[1]} b*{" "}
                           {result.skin_lab[2]}
                         </p>
@@ -1296,34 +1296,28 @@ export default function ScanPage() {
                 </div>
 
                 {/* Color comparison */}
-                <div className="mb-3 flex items-start gap-3">
-                  <div className="flex shrink-0 overflow-hidden rounded-md border shadow-inner">
+                <div className="mb-3 flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5">
                     <div
-                      className="h-12 w-12"
+                      className="h-10 w-10 rounded-md border shadow-inner"
                       style={{ backgroundColor: result.skin_hex }}
                     />
+                    <span className="text-[11px] text-gray-400">내 피부</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     <div
-                      className="h-12 w-12"
+                      className="h-10 w-10 rounded-md border shadow-inner"
                       style={{ backgroundColor: rec.hex_color }}
                     />
-                  </div>
-                  <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 text-[11px] text-gray-400">
-                    <span>내 피부</span>
-                    <span>추천색</span>
+                    <span className="text-[11px] text-gray-400">추천색</span>
                   </div>
                 </div>
 
-                <h3 className="text-sm font-semibold text-gray-900">
-                  {rec.brand}
-                </h3>
+                <h3 className="text-sm font-semibold">{displayShade(rec)}</h3>
+                <p className="mt-0.5 text-xs text-gray-500">{rec.brand}</p>
                 {rec.product_name && (
-                  <p className="mt-0.5 text-xs text-gray-700">
-                    {rec.product_name}
-                  </p>
+                  <p className="text-xs text-gray-400">{rec.product_name}</p>
                 )}
-                <p className="mt-0.5 text-xs text-gray-500">
-                  {displayShade(rec)}
-                </p>
                 <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2">
                   <p className="font-mono text-[11px] text-gray-600">
                     ΔE={rec.delta_e}

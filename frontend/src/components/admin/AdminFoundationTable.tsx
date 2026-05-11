@@ -40,16 +40,16 @@ export function AdminFoundationTable({
                   {foundation.hex_color}
                 </p>
               </div>
-              <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="truncate text-sm font-semibold text-gray-900">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-gray-900">
                   {foundation.brand}
-                </span>
-                <span className="truncate text-sm text-gray-700">
+                </p>
+                <p className="truncate text-sm text-gray-700">
                   {foundation.product_name || "-"}
-                </span>
-                <span className="truncate text-xs text-gray-400">
+                </p>
+                <p className="truncate text-xs text-gray-400">
                   {displayShade(foundation)}
-                </span>
+                </p>
               </div>
             </div>
             <div className="rounded-lg bg-gray-50 px-3 py-2 font-mono text-[11px] text-gray-600">
@@ -105,17 +105,15 @@ export function AdminFoundationTable({
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex min-w-0 items-baseline gap-3">
-                    <span className="truncate font-medium text-gray-900">
-                      {foundation.brand}
-                    </span>
-                    <span className="truncate text-gray-700">
-                      {foundation.product_name || "-"}
-                    </span>
-                    <span className="truncate text-xs text-gray-400">
-                      {displayShade(foundation)}
-                    </span>
-                  </div>
+                  <p className="truncate font-medium text-gray-900">
+                    {foundation.brand}
+                  </p>
+                  <p className="truncate text-gray-700">
+                    {foundation.product_name || "-"}
+                  </p>
+                  <p className="truncate text-xs text-gray-400">
+                    {displayShade(foundation)}
+                  </p>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-600">
                   L* {foundation.L_value} / a* {foundation.a_value} / b*{" "}
