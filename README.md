@@ -183,7 +183,7 @@
 | --- | --- | --- | --- |
 | 로컬 Python 서버 | uvicorn[standard] | `0.30.0` | 로컬에서 FastAPI를 실행할 때 사용합니다. |
 | DB 마이그레이션 보조 | alembic | `1.13.0` | 현재 운영 핵심 경로는 아니지만 개발용으로 남아 있습니다. |
-| 로컬 시드 이미지 처리 | opencv-python-headless | `4.10.0.84` | 로컬 시드 스크립트에서 파운데이션 샘플 이미지를 처리합니다. |
+| 이미지 색상 처리 | opencv-python-headless | `4.10.0.84` | 스와치 색상 추출과 선택적 로컬 시드 이미지 처리를 수행합니다. |
 
 메모:
 
@@ -217,9 +217,8 @@
 │  ├─ app/main.py           # API 엔트리포인트
 │  ├─ app/routers/          # auth / analysis / foundations
 │  ├─ app/services/         # 색 분석 / 컬러체커 감지 / 스와치 추출 / Storage
-│  ├─ app/utils/seed.py     # 샘플 이미지 기반 DB 시드
-│  ├─ tests/                # 회귀 테스트
-│  └─ shade_images/         # 로컬 시드용 이미지
+│  ├─ app/utils/seed.py     # 선택적 로컬 이미지 기반 DB 시드
+│  └─ tests/                # 회귀 테스트
 ├─ evaluation/              # 로컬 ROI 검증용 샘플/기록
 ├─ vercel.json              # Vercel Services 설정
 ├─ docker-compose.yml       # 로컬 전체 실행 설정
@@ -324,16 +323,19 @@ npx vercel@latest dev -L
 - backend만 직접 실행하면 실제 경로는 `/analyze`, `/auth/*`, `/foundations/*` 입니다.
 - Vercel Services에서는 `routePrefix: /api`가 붙어서 `/api/...`로 외부에 노출됩니다.
 
-## 데이터 시드
+## 데이터 등록
 
-`backend/shade_images/`에 있는 샘플 이미지를 기준으로 파운데이션 데이터를 다시 채울 수 있습니다.
+운영 파운데이션 데이터는 `/admin`에서 직접 촬영한 스와치 사진을 분석해 등록합니다.
+저장소에는 기본 파운데이션 샘플 데이터나 시드 이미지가 포함되어 있지 않습니다.
+
+필요하면 직접 준비한 이미지로 `backend/shade_images/{brand}/*.png`를 만든 뒤 로컬 시드 스크립트를 실행할 수 있습니다.
 
 ```bash
 cd backend
 python -m app.utils.seed
 ```
 
-이 스크립트는 샘플 이미지에서 색을 읽어 `foundations` 테이블을 다시 구성합니다.
+이 스크립트는 해당 이미지에서 색을 읽어 `foundations` 테이블을 다시 구성합니다.
 
 ## ROI 검증용 로컬 자료
 
@@ -364,7 +366,7 @@ python -m app.utils.seed
 
 - 이번 `v1.3.5` 변경은 DB 스키마 변경이 없어서 Supabase migration이 필요하지 않습니다.
 - Supabase Storage 업로드/삭제는 backend에서만 `SUPABASE_SERVICE_ROLE_KEY`를 사용합니다. 이 값은 절대 브라우저로 노출하면 안 됩니다.
-- Supabase advisor가 `public.foundations`의 RLS 비활성화를 보안 ERROR로 표시할 수 있습니다. 앱은 backend API를 통해 접근하지만, Supabase public schema 노출 정책상 운영에서는 RLS 활성화와 정책 설정을 별도 작업으로 정리하는 것이 안전합니다.
+- Supabase `public.foundations`는 RLS를 활성화하고, 브라우저 직접 접근용 정책은 만들지 않습니다. 앱은 backend API를 통해서만 foundation 데이터를 읽고 씁니다.
 - foundation 삭제 시 Storage object 정리 확인
 
 ## 참고 문서
