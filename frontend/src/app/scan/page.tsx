@@ -49,6 +49,82 @@ function loadFaceMeshModule() {
   return faceMeshModulePromise;
 }
 
+const MAX_PROCESSING_DIMENSION = 960;
+
+function pickSmoothingQuality(scale: number): ImageSmoothingQuality {
+  return scale <= 0.5 ? "low" : "medium";
+}
+
+function waitForRef<T>(ref: { current: T | null }): Promise<T | null> {
+  return new Promise((resolve) => {
+    if (ref.current) {
+      resolve(ref.current);
+      return;
+    }
+    let attempts = 0;
+    const tick = () => {
+      if (ref.current) {
+        resolve(ref.current);
+        return;
+      }
+      if (attempts++ > 30) {
+        resolve(null);
+        return;
+      }
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(tick);
+      } else {
+        setTimeout(tick, 16);
+      }
+    };
+    tick();
+  });
+}
+
+async function decodeFileToProcessingCanvas(
+  file: Blob,
+  canvas: HTMLCanvasElement,
+): Promise<boolean> {
+  // iOS Safari decodes 12MP photos through <img> very slowly. Using
+  // createImageBitmap on the Blob lets the browser decode (and on supported
+  // versions, downscale) in a single native step, which is dramatically
+  // faster than the <img>-onLoad + drawImage path.
+  if (typeof createImageBitmap !== "function") return false;
+
+  let bitmap: ImageBitmap;
+  try {
+    try {
+      bitmap = await createImageBitmap(file, {
+        resizeWidth: MAX_PROCESSING_DIMENSION,
+        resizeQuality: "medium",
+      } as ImageBitmapOptions);
+    } catch {
+      bitmap = await createImageBitmap(file);
+    }
+  } catch {
+    return false;
+  }
+
+  try {
+    const longestSide = Math.max(bitmap.width, bitmap.height);
+    const scale =
+      longestSide > MAX_PROCESSING_DIMENSION
+        ? MAX_PROCESSING_DIMENSION / longestSide
+        : 1;
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = getSrgbCanvasContext(canvas);
+    if (!ctx) return false;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = pickSmoothingQuality(scale);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return true;
+  } finally {
+    bitmap.close?.();
+  }
+}
+
 function getDeltaEBadgeClass(deltaE: number): string {
   if (deltaE <= 1.0) return "bg-green-100 text-green-700";
   if (deltaE <= 2.0) return "bg-emerald-100 text-emerald-700";
@@ -113,6 +189,7 @@ export default function ScanPage() {
   const uploadedObjectUrlRef = useRef<string | null>(null);
   const detectionTimeoutRef = useRef<number | null>(null);
   const detectionCompletedRef = useRef(false);
+  const canvasProcessedRef = useRef(false);
   const [analysisOverlay, setAnalysisOverlay] =
     useState<AnalysisOverlay | null>(null);
   const [comparisonBrand, setComparisonBrand] = useState<string | null>(null);
@@ -184,7 +261,6 @@ export default function ScanPage() {
       // coordinates, skin sampling, and ColorChecker detection are comparable
       // across devices. Modern phone photos are often ~12MP, so this shared
       // cap also keeps iPhone Safari responsive.
-      const MAX_PROCESSING_DIMENSION = 960;
       const longestSide = Math.max(img.naturalWidth, img.naturalHeight);
       const scale =
         longestSide > MAX_PROCESSING_DIMENSION
@@ -195,7 +271,7 @@ export default function ScanPage() {
       const ctx = getSrgbCanvasContext(canvas);
       if (!ctx) return false;
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "medium";
+      ctx.imageSmoothingQuality = pickSmoothingQuality(scale);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       return true;
@@ -407,6 +483,10 @@ export default function ScanPage() {
     [clearDetectionTimeout, redrawPreviewCanvas, runAnalysis],
   );
 
+  const processImageOnCanvas = useCallback((canvas: HTMLCanvasElement) => {
+    loadFaceMeshAndExtract(canvas);
+  }, []);
+
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -421,18 +501,31 @@ export default function ScanPage() {
       setSkinExtraction(null);
       setAnalysisOverlay(null);
       setDetectedChecker(null);
+      canvasProcessedRef.current = false;
       const url = URL.createObjectURL(file);
       uploadedObjectUrlRef.current = url;
       setImageUrl(url);
+
+      // Start the FaceMesh pipeline without waiting for the visible <img> to
+      // finish decoding. createImageBitmap handles decode+resize natively,
+      // which is much faster on iOS Safari for full-resolution photos.
+      void (async () => {
+        // Wait until React has committed the processing canvas to the DOM.
+        const canvas = await waitForRef(processingCanvasRef);
+        if (!canvas) return;
+        const ok = await decodeFileToProcessingCanvas(file, canvas);
+        if (!ok) return;
+        if (canvasProcessedRef.current) return;
+        canvasProcessedRef.current = true;
+        redrawPreviewCanvas(null);
+        processImageOnCanvas(canvas);
+      })();
     },
-    [revokeUploadedObjectUrl],
+    [revokeUploadedObjectUrl, redrawPreviewCanvas, processImageOnCanvas],
   );
 
-  const processImageOnCanvas = useCallback((canvas: HTMLCanvasElement) => {
-    loadFaceMeshAndExtract(canvas);
-  }, []);
-
   const handleImageLoad = useCallback(() => {
+    if (canvasProcessedRef.current) return;
     const img = imgRef.current;
     const canvas = processingCanvasRef.current;
     if (!img || !canvas) return;
@@ -440,6 +533,7 @@ export default function ScanPage() {
     const drawn = drawImageToCanvas(img, canvas);
     if (!drawn) return;
 
+    canvasProcessedRef.current = true;
     redrawPreviewCanvas(null);
     processImageOnCanvas(canvas);
   }, [drawImageToCanvas, processImageOnCanvas, redrawPreviewCanvas]);
@@ -452,6 +546,7 @@ export default function ScanPage() {
       setSkinExtraction(null);
       setAnalysisOverlay(null);
       setDetectedChecker(null);
+      canvasProcessedRef.current = false;
       setImageUrl(dataUrl);
       setStep("upload");
     },
@@ -735,6 +830,7 @@ export default function ScanPage() {
     setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
     setAvailableBrands([]);
     setBrandListError(null);
+    canvasProcessedRef.current = false;
     comparisonCacheRef.current.clear();
     comparisonRequestIdRef.current += 1;
   }, [revokeUploadedObjectUrl]);
@@ -753,6 +849,7 @@ export default function ScanPage() {
     setVisibleRecommendationCount(INITIAL_VISIBLE_RECOMMENDATIONS);
     setAvailableBrands([]);
     setBrandListError(null);
+    canvasProcessedRef.current = false;
     comparisonCacheRef.current.clear();
     comparisonRequestIdRef.current += 1;
   };
