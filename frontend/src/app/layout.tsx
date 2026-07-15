@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { SiteHeader } from "@/components/SiteHeader";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,30 +18,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="min-h-screen overflow-x-hidden bg-gray-50">
-        <nav className="sticky top-0 z-40 border-b bg-white/90 shadow-sm backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
-            <a
-              href="/"
-              className="text-base font-semibold tracking-tight text-rose-600 sm:text-lg"
-            >
-              제루미
-            </a>
-            <div className="flex gap-3 text-sm font-medium sm:gap-4">
-              <a
-                href="/scan"
-                className="text-gray-600 transition hover:text-rose-600"
-              >
-                피부 분석
-              </a>
-              <a
-                href="/admin"
-                className="text-gray-500 transition hover:text-gray-700"
-              >
-                관리자
-              </a>
-            </div>
-          </div>
-        </nav>
+        <SiteHeader />
         <main className="pb-6">{children}</main>
         <Analytics />
         <SpeedInsights />

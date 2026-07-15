@@ -3,7 +3,7 @@
   "subtitle": "Find Your Perfect Foundation Match",
   "nav": {
     "analyze": "Skin Analysis",
-    "admin": "Admin"
+    "admin": "Data Management"
   },
   "home": {
     "description": "Scientific skin tone analysis based on CIELAB color space for the most accurate foundation recommendations.",
