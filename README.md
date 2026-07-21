@@ -1,45 +1,61 @@
 # 제루미 (Jerumi)
 
-얼굴 사진에서 대표 피부색을 분석하고, 색차를 기준으로 가까운 파운데이션을 추천하는 웹 서비스입니다.
+얼굴 사진의 대표 피부색을 분석하고 CIEDE2000 색차를 기준으로 가까운 파운데이션을 추천하는 웹 서비스입니다.
 
-- 프로젝트 상태: 개발 완료
-- 현재 버전: `v1.4.0`
-- 라이브 데모: [https://jerumi.vercel.app/](https://jerumi.vercel.app/)
-- GitHub: [https://github.com/back0319/jerumi](https://github.com/back0319/jerumi)
+*A full-stack web service that analyzes representative facial skin color and recommends foundation shades using CIEDE2000 color difference.*
 
-## 프로젝트 소개
+**[Live Demo](https://jerumi.vercel.app/) · [Build & Deployment Guide](docs/build-and-deploy.md)**
 
-제루미는 얼굴 전체의 단순 평균색 대신 볼, 입 아래, 턱 등 여러 피부 영역을 각각 분석해 대표 피부색을 계산합니다. 사진에 Calibrite ColorChecker Classic Mini가 포함되어 있으면 조명과 카메라에 따른 색 편차를 보정하고, 저장된 파운데이션 색상과 CIEDE2000 색차를 비교해 가까운 제품을 추천합니다.
+![제루미 피부 분석 화면](docs/assets/readme/jerumi-scan.png)
 
-일반 사용자는 사진 업로드 또는 카메라 촬영으로 분석을 시작할 수 있으며, 관리자는 별도의 데이터 관리 화면에서 파운데이션 정보를 등록하고 관리할 수 있습니다.
+## 문제와 대상 사용자
 
-## 주요 기능
+파운데이션은 브랜드마다 호수와 색상 체계가 다르고, 매장 조명이나 촬영 환경에 따라 피부색도 다르게 보입니다. 제루미는 얼굴 전체의 단순 평균색 대신 여러 피부 영역을 분석하고, 제품의 측정 색상과 비교해 탐색 가능한 추천 결과를 제공합니다.
 
-- 얼굴 랜드마크를 이용한 피부 ROI 자동 추출
-- 업로드 이미지와 브라우저 카메라 촬영 지원
-- ColorChecker Classic Mini 자동 감지 및 색 보정
-- CIELAB 색공간과 CIEDE2000 기반 파운데이션 추천
-- 브랜드와 제품별 추천 결과 필터링
-- 파운데이션 데이터 등록, 수정, 삭제
-- 스와치 사진 분석 및 색상 자동 추출
-- 관리자용 얼굴 ROI 검증 도구
+- 사진으로 자신의 대표 피부색을 확인하려는 사용자
+- 브랜드와 제품별 파운데이션 색상을 비교하려는 사용자
+- 파운데이션 및 스와치 데이터를 등록·검증하는 관리자
 
-## 사용 흐름
+## 핵심 기능
 
-### 피부 분석
+- 이미지 업로드와 브라우저 카메라 촬영
+- MediaPipe Face Mesh 기반 볼·입 아래·턱 피부 ROI 추출
+- Calibrite ColorChecker Classic Mini 감지와 선택적 색 보정
+- CIELAB 대표 피부색 계산과 CIEDE2000 기반 추천
+- 브랜드·제품별 추천 결과 필터링
+- 파운데이션 데이터 CRUD와 스와치 사진 색상 추출
+- 관리자용 얼굴 ROI 검증 및 평가 데이터 내보내기
 
-1. `/scan`에서 얼굴과 컬러체커가 함께 보이는 사진을 업로드하거나 촬영합니다.
-2. 브라우저에서 얼굴 랜드마크와 피부 분석 영역을 찾습니다.
-3. 컬러체커가 감지되면 패치 색상을 기준으로 색 보정을 적용합니다.
-4. 여러 피부 영역의 색을 비교해 대표 피부색을 계산합니다.
-5. 저장된 파운데이션과의 색차가 작은 순서로 추천 결과를 보여줍니다.
+## 분석 흐름
 
-### 데이터 관리
+```mermaid
+flowchart LR
+    A["사진 업로드 또는 촬영"] --> B["Face Mesh 피부 ROI"]
+    B --> C{"ColorChecker 감지"}
+    C -->|감지| D["색 보정"]
+    C -->|미감지| E["원본 색 사용"]
+    D --> F["대표 CIELAB 계산"]
+    E --> F
+    F --> G["CIEDE2000 비교"]
+    G --> H["파운데이션 추천"]
+```
 
-1. `/admin`에서 관리자 계정으로 로그인합니다.
-2. 파운데이션 정보를 직접 입력하거나 스와치 사진을 분석해 등록합니다.
-3. 브랜드별 데이터를 조회하고 기존 항목을 수정하거나 삭제합니다.
-4. 필요할 때 ROI 검증 도구로 얼굴 분석 영역과 픽셀 수를 확인합니다.
+얼굴의 여러 피부 영역을 개별적으로 추출한 뒤 촬영 조건에 따라 색 보정을 적용합니다. 보정된 대표 피부색과 저장된 제품 LAB 값을 비교해 색차가 작은 순서로 추천합니다.
+
+## 주요 구현과 기술적 결정
+
+- 여러 ROI의 대표값을 결합하고 홍조·그림자·밝기 이상치의 영향을 줄이는 분석 경로를 구성했습니다.
+- ColorChecker를 찾지 못해도 분석을 계속할 수 있도록 보정 경로와 비보정 경로를 분리했습니다.
+- 브라우저에서는 얼굴 랜드마크와 픽셀 전처리를 담당하고, FastAPI에서는 대표색·색차 계산과 추천을 담당합니다.
+- 관리자가 스와치 사진을 분석한 결과를 검토한 뒤 제품 데이터로 저장할 수 있도록 입력과 검증 단계를 연결했습니다.
+
+## 검증과 현재 한계
+
+백엔드 회귀 테스트는 CIEDE2000 기준값, 밝기·홍조 이상치 처리, 여러 ROI의 대표색, ColorChecker 보정, 저조도 스와치 추출과 Storage 설정을 확인합니다. [evaluation](evaluation/README.md) 디렉터리는 ROI와 추천 결과를 사례별로 기록하는 평가 흐름을 제공합니다.
+
+- 결과는 조명, 카메라 색 처리, 촬영 각도와 피부 상태의 영향을 받을 수 있습니다.
+- ColorChecker가 함께 촬영된 사진이 더 안정적인 보정에 유리합니다.
+- 추천은 색상 비교를 돕는 참고 정보이며 의료 진단이나 실제 피부 위 발색을 보장하지 않습니다.
 
 ## 기술 스택
 
@@ -48,129 +64,18 @@
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | 얼굴 분석 | MediaPipe Face Mesh, Canvas API |
 | Backend | FastAPI, SQLAlchemy Async, NumPy, Pillow, OpenCV |
-| 인증 | JWT (`python-jose`) |
-| Database | Supabase Postgres |
-| Storage | Supabase Storage |
+| Data | Supabase Postgres, Supabase Storage |
 | Deployment | Vercel Services |
 | Monitoring | Vercel Analytics, Speed Insights |
 
-## 아키텍처
+## 성과
 
-```text
-Browser
-  └─ Next.js web service
-       ├─ 얼굴 랜드마크·피부 ROI·컬러체커 전처리
-       └─ /api 요청
-            └─ FastAPI service
-                 ├─ 피부색·색차 계산
-                 ├─ 파운데이션 추천 및 관리
-                 ├─ Supabase Postgres
-                 └─ Supabase Storage
-```
+- [프로덕션 서비스](https://jerumi.vercel.app/) 배포
+- 피부 분석, 파운데이션 추천, 관리자 데이터 관리 워크플로 통합
+- 현재 릴리스: `v1.4.0`
 
-Vercel Services에서 `frontend`는 `/`, `backend`는 `/api` 경로를 담당합니다. 프론트엔드와 API를 따로 실행할 때는 `NEXT_PUBLIC_API_URL`로 API 주소를 지정할 수 있습니다.
+## 관련 문서
 
-## 폴더 구조
-
-```text
-.
-├─ frontend/                   # Next.js 웹 애플리케이션
-│  └─ src/
-│     ├─ app/                  # 홈, 피부 분석, 데이터 관리 화면
-│     ├─ components/           # 카메라 및 관리자 UI
-│     ├─ hooks/                # 분석·관리 워크플로 상태
-│     └─ lib/                  # API, 색 계산, ROI, 컬러체커 로직
-├─ backend/                    # FastAPI 애플리케이션
-│  ├─ app/
-│  │  ├─ routers/              # 인증, 분석, 파운데이션 API
-│  │  ├─ services/             # 색 분석, 스와치 추출, Storage
-│  │  └─ models/               # 데이터베이스 모델
-│  └─ tests/                   # 백엔드 회귀 테스트
-├─ evaluation/                 # ROI 분석 검증 자료
-├─ docker-compose.yml          # 로컬 통합 실행 환경
-└─ vercel.json                 # Vercel Services 설정
-```
-
-## 로컬 실행
-
-### Docker Compose
-
-저장소 루트에서 전체 서비스를 실행합니다.
-
-```bash
-docker compose up --build
-```
-
-- 웹: `http://localhost:3000`
-- API: `http://localhost:8000`
-- PostgreSQL: `localhost:5432`
-
-### 개별 실행
-
-Backend:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements-dev.txt
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Frontend:
-
-```bash
-cd frontend
-npm install
-NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
-```
-
-개별 실행 전 PostgreSQL과 필요한 환경 변수를 준비해야 합니다.
-
-## 환경 변수
-
-루트의 [`.env.example`](.env.example)을 기준으로 설정합니다.
-
-| 변수 | 설명 |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL 연결 문자열 |
-| `DATABASE_CONNECT_TIMEOUT` | 데이터베이스 연결 제한 시간 |
-| `AUTO_CREATE_TABLES` | 시작 시 테이블 자동 생성 여부 |
-| `JWT_SECRET` | 관리자 인증 토큰 서명 키 |
-| `ADMIN_USERNAME` | 관리자 계정 이름 |
-| `ADMIN_PASSWORD` | 관리자 계정 비밀번호 |
-| `SUPABASE_URL` | Supabase 프로젝트 URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | 서버에서 Storage를 사용할 서비스 역할 키 |
-| `SUPABASE_STORAGE_BUCKET` | 파운데이션 이미지 저장 버킷 |
-| `CORS_ORIGINS` | 허용할 브라우저 출처 목록 |
-| `NEXT_PUBLIC_API_URL` | 프론트엔드와 API를 따로 실행할 때 사용할 API 주소 |
-
-`SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, 관리자 비밀번호는 서버 환경 변수로만 관리하고 브라우저나 Git 기록에 노출하지 않아야 합니다.
-
-## 검증
-
-Frontend:
-
-```bash
-cd frontend
-npx tsc --noEmit
-npm run build
-```
-
-Backend:
-
-```bash
-python3 -m pytest backend/tests
-```
-
-## 배포
-
-운영 환경은 하나의 Vercel 프로젝트에서 Next.js 웹 서비스와 FastAPI 서비스를 함께 배포하는 Vercel Services 구조입니다. 데이터베이스와 이미지 저장소는 Supabase를 사용합니다.
-
-배포 환경 변수, 라우팅, 점검 절차는 [DEPLOY_VERCEL_SUPABASE.md](DEPLOY_VERCEL_SUPABASE.md)를 참고하세요.
-
-## 참고 문서
-
-- [기존 README 및 릴리스 기록](README_LEGACY.md)
-- [Vercel·Supabase 배포 가이드](DEPLOY_VERCEL_SUPABASE.md)
-- [ROI 평가 자료 안내](evaluation/README.md)
+- [빌드 및 배포 가이드](docs/build-and-deploy.md)
+- [ROI 평가 워크플로](evaluation/README.md)
+- [기존 개발 기록](README_LEGACY.md)
