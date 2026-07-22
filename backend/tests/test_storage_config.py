@@ -85,6 +85,66 @@ class StorageConfigTests(unittest.TestCase):
         with self.assertRaises(self.storage.StorageConfigError):
             self.storage._require_storage_config()
 
+    def test_resolve_public_asset_keeps_bucket_from_existing_url(self) -> None:
+        self.storage.settings = SimpleNamespace(
+            SUPABASE_URL="https://example.supabase.co",
+            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
+            SUPABASE_STORAGE_BUCKET="new-foundation-swatches",
+        )
+
+        asset = self.storage.resolve_public_asset(
+            "https://example.supabase.co/storage/v1/object/public/"
+            "old-foundation-swatches/swatches/brand/shade%201.jpg"
+        )
+
+        self.assertIsNotNone(asset)
+        assert asset is not None
+        self.assertEqual(asset.bucket, "old-foundation-swatches")
+        self.assertEqual(asset.object_path, "swatches/brand/shade 1.jpg")
+
+    def test_resolve_public_asset_ignores_external_urls(self) -> None:
+        self.storage.settings = SimpleNamespace(
+            SUPABASE_URL="https://example.supabase.co",
+            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
+            SUPABASE_STORAGE_BUCKET="foundation-swatches",
+        )
+
+        self.assertIsNone(
+            self.storage.resolve_public_asset(
+                "https://cdn.example.test/foundation-swatches/shade.jpg"
+            )
+        )
+
+    def test_delete_public_asset_is_idempotent_and_uses_resolved_bucket(self) -> None:
+        self.storage.settings = SimpleNamespace(
+            SUPABASE_URL="https://example.supabase.co",
+            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
+            SUPABASE_STORAGE_BUCKET="foundation-swatches",
+        )
+        removed = []
+
+        class BucketClient:
+            def remove(self, paths):
+                removed.append(paths)
+
+        class StorageClient:
+            def from_(self, bucket):
+                removed.append(bucket)
+                return BucketClient()
+
+        self.storage.get_storage_client = lambda: SimpleNamespace(storage=StorageClient())
+
+        deleted = self.storage.delete_public_asset(
+            "https://example.supabase.co/storage/v1/object/public/"
+            "foundation-swatches/swatches/brand/shade.jpg"
+        )
+
+        self.assertTrue(deleted)
+        self.assertEqual(
+            removed,
+            ["foundation-swatches", ["swatches/brand/shade.jpg"]],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

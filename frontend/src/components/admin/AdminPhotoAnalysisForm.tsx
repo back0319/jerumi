@@ -197,20 +197,20 @@ export function AdminPhotoAnalysisForm({
               <>
                 <span className="text-gray-300">·</span>
                 <span>
-                  평균 ΔE{" "}
+                  평균 ΔE76{" "}
                   <span className="font-semibold text-gray-800">
                     {deltaStats.mean.toFixed(2)}
                   </span>
                 </span>
                 <span className="text-gray-300">·</span>
                 <span>
-                  최대 ΔE{" "}
+                  최대 ΔE76{" "}
                   <span className="font-semibold text-gray-800">
                     {deltaStats.max.toFixed(2)}
                   </span>
                 </span>
                 <span className="text-gray-400">
-                  (값이 작을수록 사진 간 색이 일관됨)
+                  (사진 간 일관성은 CIE76, 최종 추천은 CIEDE2000)
                 </span>
               </>
             )}

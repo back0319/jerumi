@@ -1,12 +1,15 @@
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
-def normalize_required_text(value: Any) -> str:
+HexColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+def normalize_required_text(value: Any, field_name: str = "value") -> str:
     normalized = str(value).strip()
     if not normalized:
-        raise ValueError("product_name is required")
+        raise ValueError(f"{field_name} is required")
     return normalized
 
 
@@ -18,7 +21,7 @@ class FoundationCreate(BaseModel):
     L_value: float
     a_value: float
     b_value: float
-    hex_color: str = "#000000"
+    hex_color: HexColor = "#000000"
     undertone: str | None = None
     swatch_image_url: str | None = None
 
@@ -27,10 +30,10 @@ class FoundationCreate(BaseModel):
     def normalize_undertone(cls, value: Any) -> str | None:
         return None
 
-    @field_validator("product_name", mode="before")
+    @field_validator("brand", "product_name", "shade_name", mode="before")
     @classmethod
-    def normalize_product_name(cls, value: Any) -> str:
-        return normalize_required_text(value)
+    def normalize_required_fields(cls, value: Any, info: ValidationInfo) -> str:
+        return normalize_required_text(value, info.field_name)
 
 
 class FoundationUpdate(BaseModel):
@@ -41,7 +44,7 @@ class FoundationUpdate(BaseModel):
     L_value: float | None = None
     a_value: float | None = None
     b_value: float | None = None
-    hex_color: str | None = None
+    hex_color: HexColor | None = None
     undertone: str | None = None
     swatch_image_url: str | None = None
 
@@ -50,12 +53,14 @@ class FoundationUpdate(BaseModel):
     def normalize_undertone(cls, value: Any) -> str | None:
         return None
 
-    @field_validator("product_name", mode="before")
+    @field_validator("brand", "product_name", "shade_name", mode="before")
     @classmethod
-    def normalize_product_name(cls, value: Any) -> str | None:
+    def normalize_required_fields(
+        cls, value: Any, info: ValidationInfo
+    ) -> str | None:
         if value is None:
             return None
-        return normalize_required_text(value)
+        return normalize_required_text(value, info.field_name)
 
 
 class FoundationOut(BaseModel):
@@ -67,11 +72,22 @@ class FoundationOut(BaseModel):
     L_value: float
     a_value: float
     b_value: float
-    hex_color: str
+    hex_color: HexColor
     undertone: str | None
     swatch_image_url: str | None
 
     model_config = {"from_attributes": True}
+
+
+class FoundationDeleteResult(BaseModel):
+    ok: bool
+    storage_cleanup: str
+
+
+class StorageCleanupRetryResult(BaseModel):
+    processed: int
+    completed: int
+    pending: int
 
 
 class DetectionPoint(BaseModel):
@@ -81,7 +97,7 @@ class DetectionPoint(BaseModel):
 
 class DetectedColorCheckerPatch(BaseModel):
     patch_index: int
-    measured_rgb: list[float]
+    measured_rgb: Annotated[list[float], Field(min_length=3, max_length=3)]
     center: DetectionPoint
     polygon: list[DetectionPoint]
 
@@ -116,14 +132,14 @@ class FoundationDetectionResult(BaseModel):
 class FoundationAnalysisConfidence(BaseModel):
     score: float
     level: str
-    notes: list[str] = []
+    notes: list[str]
 
 
 class FoundationAnalysisResult(BaseModel):
     L_value: float
     a_value: float
     b_value: float
-    hex_color: str
+    hex_color: HexColor
     undertone: str | None = None
     detection: FoundationDetectionResult | None = None
     confidence: FoundationAnalysisConfidence | None = None

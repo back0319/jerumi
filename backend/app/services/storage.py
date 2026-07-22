@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 from uuid import uuid4
 
 from supabase import Client, create_client
@@ -23,8 +23,15 @@ class StorageOperationError(RuntimeError):
 
 @dataclass(frozen=True)
 class UploadResult:
+    bucket: str
     object_path: str
     public_url: str
+
+
+@dataclass(frozen=True)
+class ManagedAsset:
+    bucket: str
+    object_path: str
 
 
 _BUCKET_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.\-]{0,62}$")
@@ -94,15 +101,6 @@ def _build_public_url(object_path: str) -> str:
     return f"{supabase_url}/storage/v1/object/public/{bucket}/{encoded_path}"
 
 
-def _extract_object_path(public_url: str) -> str | None:
-    supabase_url, _service_role_key, bucket = _require_storage_config()
-    prefix = f"{supabase_url}/storage/v1/object/public/{bucket}/"
-    if not public_url.startswith(prefix):
-        return None
-
-    return unquote(public_url.removeprefix(prefix))
-
-
 def upload_swatch_image(
     image_bytes: bytes,
     brand: str,
@@ -135,20 +133,65 @@ def upload_swatch_image(
         raise StorageOperationError(f"Failed to upload swatch image: {exc}") from exc
 
     return UploadResult(
+        bucket=bucket,
         object_path=object_path,
         public_url=_build_public_url(object_path),
     )
 
 
-def delete_public_asset(public_url: str) -> None:
-    object_path = _extract_object_path(public_url)
-    if not object_path:
-        return
+def resolve_public_asset(public_url: str) -> ManagedAsset | None:
+    """Resolve a public URL owned by the configured Supabase project.
 
-    _supabase_url, _service_role_key, bucket = _require_storage_config()
+    The bucket is parsed from the URL rather than assumed from current config so
+    cleanup jobs remain valid if a deployment changes bucket names later.
+    External URLs are intentionally ignored.
+    """
+    supabase_url, _service_role_key, _configured_bucket = _require_storage_config()
+    configured = urlsplit(supabase_url)
+    candidate = urlsplit(public_url)
+    if (candidate.scheme, candidate.netloc) != (configured.scheme, configured.netloc):
+        return None
+
+    prefix = "/storage/v1/object/public/"
+    if not candidate.path.startswith(prefix):
+        return None
+
+    bucket, separator, object_path = candidate.path.removeprefix(prefix).partition("/")
+    bucket = unquote(bucket)
+    object_path = unquote(object_path).lstrip("/")
+    if not separator or not _BUCKET_NAME_PATTERN.fullmatch(bucket) or not object_path:
+        return None
+
+    return ManagedAsset(bucket=bucket, object_path=object_path)
+
+
+def delete_object(bucket: str, object_path: str) -> None:
+    """Delete one Storage object by stable coordinates.
+
+    Supabase Storage remove is used instead of mutating storage.objects so the
+    object and its metadata are removed together. Repeating the same cleanup is
+    safe and is the basis for outbox retries.
+    """
+    _supabase_url, _service_role_key, _configured_bucket = _require_storage_config()
+    if not _BUCKET_NAME_PATTERN.fullmatch(bucket):
+        raise StorageConfigError(f"Invalid Storage bucket in cleanup job: {bucket!r}")
+
+    normalized_path = object_path.strip().lstrip("/")
+    if not normalized_path:
+        raise StorageConfigError("Storage cleanup object path is empty.")
+
     client = get_storage_client()
 
     try:
-        client.storage.from_(bucket).remove([object_path])
+        client.storage.from_(bucket).remove([normalized_path])
     except Exception as exc:
         raise StorageOperationError(f"Failed to delete swatch image: {exc}") from exc
+
+
+def delete_public_asset(public_url: str) -> bool:
+    asset = resolve_public_asset(public_url)
+    if asset is None:
+        return False
+
+    delete_object(asset.bucket, asset.object_path)
+    return True
