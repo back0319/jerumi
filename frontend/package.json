@@ -6,7 +6,8 @@
     "dev": "next dev --hostname 0.0.0.0 --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "generate:api-types": "npx --yes openapi-typescript@7.13.0 ../backend/openapi.json -o src/types/api.generated.ts"
   },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",

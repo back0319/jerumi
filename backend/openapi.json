@@ -1,0 +1,1772 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisConfidence": {
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "level",
+          "notes"
+        ],
+        "title": "AnalysisConfidence",
+        "type": "object"
+      },
+      "AnalysisMeta": {
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/AnalysisConfidence"
+          },
+          "fallback_used": {
+            "title": "Fallback Used",
+            "type": "boolean"
+          },
+          "max_region_delta_e": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Region Delta E"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "region_pixel_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Region Pixel Counts",
+            "type": "object"
+          },
+          "total_pixel_count": {
+            "title": "Total Pixel Count",
+            "type": "integer"
+          },
+          "valid_region_count": {
+            "title": "Valid Region Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "method",
+          "fallback_used",
+          "total_pixel_count",
+          "valid_region_count",
+          "region_pixel_counts",
+          "confidence"
+        ],
+        "title": "AnalysisMeta",
+        "type": "object"
+      },
+      "AnalysisRequest": {
+        "description": "Skin analysis request with color-checker calibrated pixels.",
+        "properties": {
+          "brands": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brands"
+          },
+          "checker_patches": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ColorCheckerPatch"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker Patches"
+          },
+          "product_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Names"
+          },
+          "skin_pixels_rgb": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "maximum": 255.0,
+                    "minimum": 0.0,
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skin Pixels Rgb"
+          },
+          "skin_regions_rgb": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkinRegionPixels"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "top_n": {
+            "default": 5,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "title": "AnalysisRequest",
+        "type": "object"
+      },
+      "AnalysisResponse": {
+        "properties": {
+          "analysis_meta": {
+            "$ref": "#/components/schemas/AnalysisMeta"
+          },
+          "correction_applied": {
+            "title": "Correction Applied",
+            "type": "boolean"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationItem"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "skin_hex": {
+            "title": "Skin Hex",
+            "type": "string"
+          },
+          "skin_hex_raw": {
+            "title": "Skin Hex Raw",
+            "type": "string"
+          },
+          "skin_lab": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Skin Lab",
+            "type": "array"
+          },
+          "skin_lab_raw": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Skin Lab Raw",
+            "type": "array"
+          }
+        },
+        "required": [
+          "skin_lab",
+          "skin_hex",
+          "skin_lab_raw",
+          "skin_hex_raw",
+          "correction_applied",
+          "recommendations",
+          "analysis_meta"
+        ],
+        "title": "AnalysisResponse",
+        "type": "object"
+      },
+      "Body_analyze_swatch_foundations_analyze_swatch_post": {
+        "properties": {
+          "checker_patches": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker Patches"
+          },
+          "image": {
+            "format": "binary",
+            "title": "Image",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image"
+        ],
+        "title": "Body_analyze_swatch_foundations_analyze_swatch_post",
+        "type": "object"
+      },
+      "Body_create_foundation_from_photo_foundations_from_photo_post": {
+        "properties": {
+          "analysis_result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Result"
+          },
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "checker_patches": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checker Patches"
+          },
+          "image": {
+            "format": "binary",
+            "title": "Image",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "shade_code": {
+            "default": "",
+            "title": "Shade Code",
+            "type": "string"
+          },
+          "shade_name": {
+            "title": "Shade Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image",
+          "brand",
+          "product_name",
+          "shade_name"
+        ],
+        "title": "Body_create_foundation_from_photo_foundations_from_photo_post",
+        "type": "object"
+      },
+      "Body_login_auth_login_post": {
+        "properties": {
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Secret"
+          },
+          "grant_type": {
+            "anyOf": [
+              {
+                "pattern": "password",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "scope": {
+            "default": "",
+            "title": "Scope",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Body_login_auth_login_post",
+        "type": "object"
+      },
+      "ColorCheckerDetectionResult": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "fiducials": {
+            "$ref": "#/components/schemas/ColorCheckerFiducials"
+          },
+          "patches": {
+            "items": {
+              "$ref": "#/components/schemas/DetectedColorCheckerPatch"
+            },
+            "title": "Patches",
+            "type": "array"
+          },
+          "polygon": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionPoint"
+            },
+            "title": "Polygon",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "confidence",
+          "polygon",
+          "patches",
+          "fiducials"
+        ],
+        "title": "ColorCheckerDetectionResult",
+        "type": "object"
+      },
+      "ColorCheckerFiducials": {
+        "properties": {
+          "center": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetectionPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "corners": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionPoint"
+            },
+            "title": "Corners",
+            "type": "array"
+          }
+        },
+        "required": [
+          "corners"
+        ],
+        "title": "ColorCheckerFiducials",
+        "type": "object"
+      },
+      "ColorCheckerPatch": {
+        "description": "Measured RGB of a known color checker patch.",
+        "properties": {
+          "measured_rgb": {
+            "items": {
+              "maximum": 255.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Measured Rgb",
+            "type": "array"
+          },
+          "reference_lab": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Reference Lab",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reference_lab",
+          "measured_rgb"
+        ],
+        "title": "ColorCheckerPatch",
+        "type": "object"
+      },
+      "DetectedColorCheckerPatch": {
+        "properties": {
+          "center": {
+            "$ref": "#/components/schemas/DetectionPoint"
+          },
+          "measured_rgb": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Measured Rgb",
+            "type": "array"
+          },
+          "patch_index": {
+            "title": "Patch Index",
+            "type": "integer"
+          },
+          "polygon": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionPoint"
+            },
+            "title": "Polygon",
+            "type": "array"
+          }
+        },
+        "required": [
+          "patch_index",
+          "measured_rgb",
+          "center",
+          "polygon"
+        ],
+        "title": "DetectedColorCheckerPatch",
+        "type": "object"
+      },
+      "DetectionPoint": {
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "DetectionPoint",
+        "type": "object"
+      },
+      "FoundationAnalysisConfidence": {
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "level",
+          "notes"
+        ],
+        "title": "FoundationAnalysisConfidence",
+        "type": "object"
+      },
+      "FoundationAnalysisResult": {
+        "properties": {
+          "L_value": {
+            "title": "L Value",
+            "type": "number"
+          },
+          "a_value": {
+            "title": "A Value",
+            "type": "number"
+          },
+          "b_value": {
+            "title": "B Value",
+            "type": "number"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FoundationAnalysisConfidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FoundationDetectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hex_color": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Hex Color",
+            "type": "string"
+          },
+          "undertone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undertone"
+          }
+        },
+        "required": [
+          "L_value",
+          "a_value",
+          "b_value",
+          "hex_color"
+        ],
+        "title": "FoundationAnalysisResult",
+        "type": "object"
+      },
+      "FoundationCreate": {
+        "properties": {
+          "L_value": {
+            "title": "L Value",
+            "type": "number"
+          },
+          "a_value": {
+            "title": "A Value",
+            "type": "number"
+          },
+          "b_value": {
+            "title": "B Value",
+            "type": "number"
+          },
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "hex_color": {
+            "default": "#000000",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Hex Color",
+            "type": "string"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "shade_code": {
+            "default": "",
+            "title": "Shade Code",
+            "type": "string"
+          },
+          "shade_name": {
+            "title": "Shade Name",
+            "type": "string"
+          },
+          "swatch_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swatch Image Url"
+          },
+          "undertone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undertone"
+          }
+        },
+        "required": [
+          "brand",
+          "product_name",
+          "shade_name",
+          "L_value",
+          "a_value",
+          "b_value"
+        ],
+        "title": "FoundationCreate",
+        "type": "object"
+      },
+      "FoundationDeleteResult": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "storage_cleanup": {
+            "title": "Storage Cleanup",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "storage_cleanup"
+        ],
+        "title": "FoundationDeleteResult",
+        "type": "object"
+      },
+      "FoundationDetectionResult": {
+        "properties": {
+          "color_checker": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ColorCheckerDetectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "color_correction_applied": {
+            "title": "Color Correction Applied",
+            "type": "boolean"
+          },
+          "color_correction_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Correction Source"
+          },
+          "swatch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SwatchDetectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "color_correction_applied"
+        ],
+        "title": "FoundationDetectionResult",
+        "type": "object"
+      },
+      "FoundationOut": {
+        "properties": {
+          "L_value": {
+            "title": "L Value",
+            "type": "number"
+          },
+          "a_value": {
+            "title": "A Value",
+            "type": "number"
+          },
+          "b_value": {
+            "title": "B Value",
+            "type": "number"
+          },
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "hex_color": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Hex Color",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "shade_code": {
+            "title": "Shade Code",
+            "type": "string"
+          },
+          "shade_name": {
+            "title": "Shade Name",
+            "type": "string"
+          },
+          "swatch_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swatch Image Url"
+          },
+          "undertone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undertone"
+          }
+        },
+        "required": [
+          "id",
+          "brand",
+          "product_name",
+          "shade_code",
+          "shade_name",
+          "L_value",
+          "a_value",
+          "b_value",
+          "hex_color",
+          "undertone",
+          "swatch_image_url"
+        ],
+        "title": "FoundationOut",
+        "type": "object"
+      },
+      "FoundationUpdate": {
+        "properties": {
+          "L_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "L Value"
+          },
+          "a_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A Value"
+          },
+          "b_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B Value"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "hex_color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9a-fA-F]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hex Color"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "shade_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shade Code"
+          },
+          "shade_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shade Name"
+          },
+          "swatch_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Swatch Image Url"
+          },
+          "undertone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undertone"
+          }
+        },
+        "title": "FoundationUpdate",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "RecommendationItem": {
+        "properties": {
+          "brand": {
+            "title": "Brand",
+            "type": "string"
+          },
+          "delta_e": {
+            "title": "Delta E",
+            "type": "number"
+          },
+          "delta_e_category": {
+            "title": "Delta E Category",
+            "type": "string"
+          },
+          "delta_e_description": {
+            "title": "Delta E Description",
+            "type": "string"
+          },
+          "delta_e_range": {
+            "title": "Delta E Range",
+            "type": "string"
+          },
+          "hex_color": {
+            "title": "Hex Color",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "lab": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Lab",
+            "type": "array"
+          },
+          "product_name": {
+            "title": "Product Name",
+            "type": "string"
+          },
+          "shade_code": {
+            "title": "Shade Code",
+            "type": "string"
+          },
+          "shade_name": {
+            "title": "Shade Name",
+            "type": "string"
+          },
+          "undertone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undertone"
+          }
+        },
+        "required": [
+          "id",
+          "brand",
+          "product_name",
+          "shade_code",
+          "shade_name",
+          "lab",
+          "hex_color",
+          "delta_e",
+          "delta_e_category",
+          "delta_e_range",
+          "delta_e_description",
+          "undertone"
+        ],
+        "title": "RecommendationItem",
+        "type": "object"
+      },
+      "RecommendationRequest": {
+        "description": "Recommendation-only request using an already analyzed skin LAB value.",
+        "properties": {
+          "brands": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brands"
+          },
+          "product_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Names"
+          },
+          "skin_lab": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Skin Lab",
+            "type": "array"
+          },
+          "top_n": {
+            "default": 200,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "skin_lab"
+        ],
+        "title": "RecommendationRequest",
+        "type": "object"
+      },
+      "SkinRegionPixels": {
+        "description": "Grouped facial skin pixels sampled from named ROI regions.",
+        "properties": {
+          "below_lips": {
+            "items": {
+              "items": {
+                "maximum": 255.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "title": "Below Lips",
+            "type": "array"
+          },
+          "chin": {
+            "items": {
+              "items": {
+                "maximum": 255.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "title": "Chin",
+            "type": "array"
+          },
+          "lower_left_cheek": {
+            "items": {
+              "items": {
+                "maximum": 255.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "title": "Lower Left Cheek",
+            "type": "array"
+          },
+          "lower_right_cheek": {
+            "items": {
+              "items": {
+                "maximum": 255.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "title": "Lower Right Cheek",
+            "type": "array"
+          }
+        },
+        "title": "SkinRegionPixels",
+        "type": "object"
+      },
+      "StorageCleanupRetryResult": {
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "processed",
+          "completed",
+          "pending"
+        ],
+        "title": "StorageCleanupRetryResult",
+        "type": "object"
+      },
+      "SwatchDetectionResult": {
+        "properties": {
+          "pixel_count": {
+            "title": "Pixel Count",
+            "type": "integer"
+          },
+          "polygon": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionPoint"
+            },
+            "title": "Polygon",
+            "type": "array"
+          },
+          "raw_pixel_count": {
+            "title": "Raw Pixel Count",
+            "type": "integer"
+          },
+          "sample_hex": {
+            "title": "Sample Hex",
+            "type": "string"
+          }
+        },
+        "required": [
+          "polygon",
+          "pixel_count",
+          "raw_pixel_count",
+          "sample_hex"
+        ],
+        "title": "SwatchDetectionResult",
+        "type": "object"
+      },
+      "Token": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "token_type": {
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type"
+        ],
+        "title": "Token",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "OAuth2PasswordBearer": {
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "/api/auth/login"
+          }
+        },
+        "type": "oauth2"
+      }
+    }
+  },
+  "info": {
+    "description": "CIELAB-based skin tone analysis and foundation recommendation",
+    "title": "제루미 API",
+    "version": "1.4.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/analyze": {
+      "post": {
+        "description": "Analyze skin pixels and recommend foundations.\n\nAccepts pre-extracted skin ROI pixels (RGB 0-255) from the frontend,\nalong with optional color checker patches for calibration.",
+        "operationId": "analyze_skin_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Skin",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_login_auth_login_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/foundations": {
+      "get": {
+        "operationId": "list_foundations_foundations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brand",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FoundationOut"
+                  },
+                  "title": "Response List Foundations Foundations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Foundations",
+        "tags": [
+          "foundations"
+        ]
+      },
+      "post": {
+        "operationId": "create_foundation_foundations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FoundationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Foundation",
+        "tags": [
+          "foundations"
+        ]
+      }
+    },
+    "/foundations/analyze-swatch": {
+      "post": {
+        "description": "Analyze a foundation swatch photo and return extracted color values.\n\nUpload a photo of foundation applied on white paper, optionally with\nColorChecker patches for calibration. Returns LAB values, hex color,\nwithout saving to the database.",
+        "operationId": "analyze_swatch_foundations_analyze_swatch_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analyze_swatch_foundations_analyze_swatch_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundationAnalysisResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Analyze Swatch",
+        "tags": [
+          "foundations"
+        ]
+      }
+    },
+    "/foundations/brands": {
+      "get": {
+        "operationId": "list_brands_foundations_brands_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Brands Foundations Brands Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Brands",
+        "tags": [
+          "foundations"
+        ]
+      }
+    },
+    "/foundations/from-photo": {
+      "post": {
+        "description": "Analyze a foundation swatch photo and save the result to the database.\n\nSame analysis as analyze-swatch, but also creates a Foundation record\nand stores the uploaded image.",
+        "operationId": "create_foundation_from_photo_foundations_from_photo_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_foundation_from_photo_foundations_from_photo_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Foundation From Photo",
+        "tags": [
+          "foundations"
+        ]
+      }
+    },
+    "/foundations/storage-cleanups/retry": {
+      "post": {
+        "operationId": "retry_storage_cleanups_foundations_storage_cleanups_retry_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageCleanupRetryResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Retry Storage Cleanups",
+        "tags": [
+          "foundations"
+        ]
+      }
+    },
+    "/foundations/{foundation_id}": {
+      "delete": {
+        "operationId": "delete_foundation_foundations__foundation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "foundation_id",
+            "required": true,
+            "schema": {
+              "title": "Foundation Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundationDeleteResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Foundation",
+        "tags": [
+          "foundations"
+        ]
+      },
+      "get": {
+        "operationId": "get_foundation_foundations__foundation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "foundation_id",
+            "required": true,
+            "schema": {
+              "title": "Foundation Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Foundation",
+        "tags": [
+          "foundations"
+        ]
+      },
+      "put": {
+        "operationId": "update_foundation_foundations__foundation_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "foundation_id",
+            "required": true,
+            "schema": {
+              "title": "Foundation Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FoundationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoundationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Foundation",
+        "tags": [
+          "foundations"
+        ]
+      }
+    },
+    "/recommendations": {
+      "post": {
+        "description": "Recommend foundations for an already computed skin LAB value.",
+        "operationId": "recommend_from_skin_lab_recommendations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecommendationItem"
+                  },
+                  "title": "Response Recommend From Skin Lab Recommendations Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommend From Skin Lab",
+        "tags": [
+          "analysis"
+        ]
+      }
+    }
+  }
+}
