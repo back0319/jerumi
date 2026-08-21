@@ -71,6 +71,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 | `JWT_SECRET` | Secret | 관리자 인증 토큰 서명 키 |
 | `ADMIN_USERNAME` | Secret | 관리자 계정 이름 |
 | `ADMIN_PASSWORD` | Secret | 관리자 계정 비밀번호 |
+| `CRON_SECRET` | Secret | Vercel Cron 요청을 인증하는 서버 전용 무작위 값 |
 | `SUPABASE_URL` | Server only | Supabase 프로젝트 URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Secret | Storage 관리용 service role key |
 | `SUPABASE_STORAGE_BUCKET` | Server only | 파운데이션 이미지 버킷 |
@@ -78,7 +79,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 | `CORS_ORIGIN_REGEX` | Server only | Preview 도메인용 선택적 정규식 |
 | `NEXT_PUBLIC_API_URL` | Browser | 프론트엔드와 API를 분리 실행할 때의 API 주소 |
 
-`SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, 관리자 계정 값은 브라우저 번들이나 Git 기록에 넣지 않습니다. 운영 환경에서는 `AUTO_CREATE_TABLES=false`를 유지하고 마이그레이션을 별도로 관리합니다.
+`SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `JWT_SECRET`, 관리자 계정 값은 브라우저 번들이나 Git 기록에 넣지 않습니다. 운영 환경에서는 `AUTO_CREATE_TABLES=false`를 유지하고 마이그레이션을 별도로 관리합니다.
 
 ## 검증과 빌드
 
@@ -126,6 +127,12 @@ Vercel Git integration을 연결하면 `main` 브랜치가 Production을 갱신�
 origin에서 서비스하므로 Vercel Services에서는 `NEXT_PUBLIC_API_URL`을 비워
 상대 `/api` 경로를 사용합니다. 별도 API를 연결할 때만 절대 URL을 설정하며,
 앞뒤 공백과 마지막 `/`는 프론트 API 모듈이 정규화합니다.
+
+### Supabase keepalive Cron
+
+루트의 `vercel.json`은 매일 `03:00 UTC`에 `/api/cron/supabase-keepalive`를 호출합니다. 이 FastAPI endpoint는 Vercel이 `CRON_SECRET`으로 생성한 Bearer 인증을 확인한 뒤 `foundations` 테이블에서 ID 하나만 읽습니다. 성공 응답은 데이터 없이 `{ "ok": true }`만 반환합니다.
+
+Cron은 Production 배포에서만 실행됩니다. Vercel Project Settings의 Production 환경에 32바이트 이상의 무작위 `CRON_SECRET`을 등록하고, Vercel Cron 목록과 Function 로그에서 실행 결과를 확인합니다. 이 작업은 Free 프로젝트의 활동을 유지하기 위한 운영 보조 장치이며 비정지 SLA를 제공하지 않습니다.
 
 ### 리팩터링 Preview
 

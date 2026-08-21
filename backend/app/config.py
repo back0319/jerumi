@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 480
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin1234"
+    CRON_SECRET: str | None = None
     SUPABASE_URL: str | None = None
     SUPABASE_SERVICE_ROLE_KEY: str | None = None
     SUPABASE_STORAGE_BUCKET: str | None = None

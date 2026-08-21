@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import Base, engine
-from app.routers import analysis, auth, foundations
+from app.routers import analysis, auth, cron, foundations
 from app.version import APP_VERSION
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(analysis.router)
+app.include_router(cron.router)
 app.include_router(foundations.router)
 
 

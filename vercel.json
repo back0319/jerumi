@@ -1,6 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "services",
+  "crons": [
+    {
+      "path": "/api/cron/supabase-keepalive",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "experimentalServices": {
     "web": {
       "entrypoint": "frontend",
