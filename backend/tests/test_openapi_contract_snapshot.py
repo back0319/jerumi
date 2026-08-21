@@ -2,7 +2,10 @@ import json
 from pathlib import Path
 
 from app.main import app
-from app.version import APP_VERSION
+from app import version as version_module
+
+
+APP_VERSION = version_module.APP_VERSION
 
 
 def test_openapi_snapshot_matches_fastapi_schema() -> None:
@@ -26,3 +29,22 @@ def test_app_version_matches_frontend_package() -> None:
     )
 
     assert APP_VERSION == version_source["version"] == frontend_package["version"]
+
+
+def test_app_version_falls_back_to_bundled_openapi(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    openapi_file = tmp_path / "openapi.json"
+    openapi_file.write_text(
+        json.dumps({"info": {"version": "9.8.7"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        version_module,
+        "_VERSION_FILES",
+        (tmp_path / "missing-app-version.json",),
+    )
+    monkeypatch.setattr(version_module, "_OPENAPI_FILES", (openapi_file,))
+
+    assert version_module.load_app_version() == "9.8.7"
