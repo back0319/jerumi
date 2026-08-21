@@ -139,7 +139,9 @@ origin에서 서비스하므로 Vercel Services에서는 `NEXT_PUBLIC_API_URL`�
 
 무료 Supabase 프로젝트 슬롯이 없을 때 기존 프로젝트를 pause/delete하지
 않습니다. 유료 Supabase branch는 시간당 비용을 다시 확인하고 별도 승인을
-받은 경우에만 생성합니다.
+받은 경우에만 생성합니다. 사용자가 기존 Jerumi 프로젝트 사용을 명시적으로
+승인한 경우에는 적용 전 행 수와 스키마를 읽기 전용으로 기록하고, 운영 seed를
+실행하지 않으며, migration과 임시 검증 데이터만 사용합니다.
 
 ## Supabase 설정
 
@@ -153,8 +155,10 @@ origin에서 서비스하므로 Vercel Services에서는 `NEXT_PUBLIC_API_URL`�
 
 ### Storage
 
-1. `supabase/config.toml`의 `foundation-swatches` 정의를 bucket 이름, 공개 여부,
-   20MiB 제한과 MIME 허용 목록의 단일 기준으로 사용합니다.
+1. `supabase/config.toml`의 `foundation-swatches` 정의와
+   `supabase/migrations/*_configure_foundation_swatches_bucket.sql`을 같은 bucket
+   이름, 공개 여부, 20MiB 제한과 MIME 허용 목록으로 유지합니다. 로컬 설정은
+   `config.toml`, 원격 적용 책임은 migration에 있습니다.
 2. `SUPABASE_STORAGE_BUCKET=foundation-swatches`로 설정합니다.
 3. FastAPI만 service role key를 사용해 Storage API로 업로드와 삭제를 수행합니다.
 4. 브라우저에는 public image URL만 반환합니다.
