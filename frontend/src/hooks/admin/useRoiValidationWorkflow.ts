@@ -9,7 +9,8 @@ import {
   type SetStateAction,
 } from "react";
 
-import { apiPost } from "@/lib/api";
+import { prepareSkinAnalysisRequest } from "@/domain/skinAnalysis";
+import { submitSkinAnalysis } from "@/lib/analysisApi";
 import { getSrgbCanvasContext, getSrgbImageData } from "@/lib/canvasColor";
 import {
   buildRegionPolygons,
@@ -18,8 +19,6 @@ import {
   SKIN_REGIONS,
 } from "@/lib/facemesh";
 import {
-  downsamplePixels,
-  downsampleSkinRegions,
   FALLBACK_OVERLAY_FILL,
   FALLBACK_OVERLAY_STROKE,
   getSkinRegionPixelCounts,
@@ -37,8 +36,6 @@ type UseRoiValidationWorkflowArgs = {
 };
 
 const ROI_FACE_MESH_TIMEOUT_MS = 8000;
-const ROI_MAX_ANALYSIS_PIXELS = 10000;
-const ROI_MAX_REGION_ANALYSIS_PIXELS = 2500;
 
 export function useRoiValidationWorkflow({
   activePanel,
@@ -293,7 +290,7 @@ export function useRoiValidationWorkflow({
 
         faceMesh.setOptions({
           maxNumFaces: 1,
-          refineLandmarks: true,
+          refineLandmarks: false,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5,
         });
@@ -406,24 +403,8 @@ export function useRoiValidationWorkflow({
     setRoiError(null);
 
     try {
-      const sampledSkinRegions = roiExtraction.skinRegions
-        ? downsampleSkinRegions(
-            roiExtraction.skinRegions,
-            ROI_MAX_REGION_ANALYSIS_PIXELS,
-          )
-        : null;
-      const pixels = sampledSkinRegions
-        ? downsamplePixels(
-            flattenSkinRegionPixels(sampledSkinRegions),
-            ROI_MAX_ANALYSIS_PIXELS,
-          )
-        : downsamplePixels(roiExtraction.combinedPixels, ROI_MAX_ANALYSIS_PIXELS);
-
-      const response = await apiPost<AnalysisResponse>("/analyze", {
-        skin_pixels_rgb: pixels,
-        skin_regions_rgb: sampledSkinRegions,
-        top_n: 5,
-      });
+      const request = prepareSkinAnalysisRequest(roiExtraction, null, 5);
+      const response = await submitSkinAnalysis(request);
       setRoiResult(response);
     } catch (error: any) {
       setRoiError(error.message || "ROI 분석 중 오류가 발생했습니다.");

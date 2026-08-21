@@ -30,6 +30,30 @@
 - `representative_skin`
 - `top_recommendations`
 
+## 자동 회귀 fixture
+
+백엔드의 합성 입력 fixture는 `backend/tests/fixtures/`에 있습니다. 실제 얼굴
+사진이나 운영 DB 데이터 없이 다음 동작을 고정합니다.
+
+- `flat_skin_recommendation.json`: 단일 ROI의 RGB → CIELAB → 추천 순서
+- `regional_colorchecker_recommendation.json`: 다중 ROI, ColorChecker 보정,
+  raw/보정 LAB, CIEDE2000 추천 순서
+
+실행 명령:
+
+```bash
+cd backend
+.venv/bin/python -m pytest tests/test_analysis_golden_fixtures.py
+```
+
+LAB와 ColorChecker 행렬은 절대 오차 `1e-6`, 공개 응답에서 소수 셋째 자리로
+반올림되는 ΔE는 절대 오차 `1e-3`을 허용합니다. 추천 ID 순서, ΔE 구간,
+대표색 hex, 분석 방식과 confidence 문구는 정확히 일치해야 합니다.
+
+fixture 기준값은 의도적으로 분석 정책을 바꿀 때만 갱신합니다. 갱신 PR에는
+기존 값과 새 값의 차이, 사용자에게 보이는 추천 순서 변화, 승인 근거를 함께
+기록합니다. 테스트를 통과시키기 위한 자동 재생성은 허용하지 않습니다.
+
 ## 다음 확장 포인트
 
 - 기대 top-1 / top-3 라벨 필드 추가

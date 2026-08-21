@@ -1,0 +1,42 @@
+{
+  "case_id": "flat-skin-with-redness-and-lightness-outliers",
+  "description": "Legacy flat ROI path with dominant skin pixels, redness, highlights, and shadows.",
+  "input": {
+    "skin_pixel_groups": [
+      { "rgb": [198, 164, 146], "count": 220, "jitter": 4 },
+      { "rgb": [236, 128, 126], "count": 24, "jitter": 3 },
+      { "rgb": [244, 232, 224], "count": 24, "jitter": 2 },
+      { "rgb": [76, 61, 56], "count": 24, "jitter": 2 }
+    ],
+    "foundations": [
+      { "id": 101, "brand": "Fixture A", "product_name": "Balance Base", "shade_code": "19N", "shade_name": "Porcelain", "L_value": 76.2, "a_value": 7.1, "b_value": 13.5, "hex_color": "#d9b9a6", "undertone": null },
+      { "id": 102, "brand": "Fixture A", "product_name": "Balance Base", "shade_code": "21N", "shade_name": "Light Beige", "L_value": 69.4, "a_value": 8.6, "b_value": 15.9, "hex_color": "#c7a18e", "undertone": null },
+      { "id": 103, "brand": "Fixture B", "product_name": "Tone Fluid", "shade_code": "23W", "shade_name": "Warm Sand", "L_value": 63.0, "a_value": 10.2, "b_value": 20.4, "hex_color": "#b88e72", "undertone": null },
+      { "id": 104, "brand": "Fixture B", "product_name": "Tone Fluid", "shade_code": "25C", "shade_name": "Cool Tan", "L_value": 56.5, "a_value": 15.4, "b_value": 13.0, "hex_color": "#a57569", "undertone": null }
+    ],
+    "top_n": 4
+  },
+  "expected": {
+    "skin_lab": [70.65774409, 9.72034447, 13.98484367],
+    "skin_hex": "#c7a693",
+    "method": "flat-pixels",
+    "fallback_used": false,
+    "total_pixel_count": 292,
+    "valid_region_count": 0,
+    "confidence": {
+      "score": 0.53,
+      "level": "낮음",
+      "notes": ["다중 ROI 대신 단일 평면 픽셀 경로를 사용했습니다."]
+    },
+    "recommendations": [
+      { "id": 102, "delta_e": 2.252, "category": "눈에 띄는 차이" },
+      { "id": 101, "delta_e": 4.863, "category": "뚜렷한 차이" },
+      { "id": 103, "delta_e": 7.314, "category": "차이 큼" },
+      { "id": 104, "delta_e": 12.966, "category": "차이 큼" }
+    ]
+  },
+  "tolerances": {
+    "lab_absolute": 0.000001,
+    "delta_e_absolute": 0.001
+  }
+}

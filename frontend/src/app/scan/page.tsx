@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiGet, apiPost } from "@/lib/api";
 import { useApiPrewarm } from "@/hooks/useApiPrewarm";
+import { prepareSkinAnalysisRequest } from "@/domain/skinAnalysis";
+import { analyzeSkin, recommendForBrand } from "@/lib/analysisApi";
 import {
   buildRegionPolygons,
   extractSkinPixelsByRegion,
@@ -12,14 +13,11 @@ import {
   type SkinRegionPixels,
 } from "@/lib/facemesh";
 import {
-  buildCheckerPatchesFromDetection,
   detectColorCheckerFromCanvas,
   type ColorCheckerDetection,
 } from "@/lib/colorChecker";
 import {
   brightSkinPreviewHex,
-  downsamplePixels,
-  downsampleSkinRegions,
   FALLBACK_OVERLAY_FILL,
   FALLBACK_OVERLAY_STROKE,
   getSkinRegionPixelCounts,
@@ -176,8 +174,6 @@ export default function ScanPage() {
   const FACE_MESH_TIMEOUT_MS = 6000;
   const INITIAL_VISIBLE_RECOMMENDATIONS = 9;
   const RECOMMENDATION_PAGE_SIZE = 6;
-  const MAX_ANALYSIS_PIXELS = 10000;
-  const MAX_REGION_ANALYSIS_PIXELS = 2500;
   const [step, setStep] = useState<Step>("upload");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResponse | null>(null);
@@ -220,11 +216,6 @@ export default function ScanPage() {
     new Map(),
   );
   const comparisonRequestIdRef = useRef(0);
-  const lastAnalyzeRequestRef = useRef<{
-    skin_pixels_rgb: number[][];
-    skin_regions_rgb: ReturnType<typeof downsampleSkinRegions> | null;
-    checker_patches: ReturnType<typeof buildCheckerPatchesFromDetection>;
-  } | null>(null);
   const recommendationBrands = result
     ? Array.from(new Set(result.recommendations.map((r) => r.brand))).sort()
     : [];
@@ -421,35 +412,8 @@ export default function ScanPage() {
       comparisonRequestIdRef.current += 1;
 
       try {
-        const patches = buildCheckerPatchesFromDetection(checker);
-
-        const sampledSkinRegions = extraction.skinRegions
-          ? downsampleSkinRegions(
-              extraction.skinRegions,
-              MAX_REGION_ANALYSIS_PIXELS,
-            )
-          : null;
-        const pixels = sampledSkinRegions
-          ? downsamplePixels(
-              flattenSkinRegionPixels(sampledSkinRegions),
-              MAX_ANALYSIS_PIXELS,
-            )
-          : downsamplePixels(extraction.combinedPixels, MAX_ANALYSIS_PIXELS);
-
-        const baseRequestBody = {
-          skin_pixels_rgb: pixels,
-          skin_regions_rgb: sampledSkinRegions,
-          checker_patches: patches,
-        };
-        lastAnalyzeRequestRef.current = baseRequestBody;
-
-        const [response, brands] = await Promise.all([
-          apiPost<AnalysisResponse>("/analyze", {
-            ...baseRequestBody,
-            top_n: 200,
-          }),
-          apiGet<string[]>("/foundations/brands").catch(() => null),
-        ]);
+        const request = prepareSkinAnalysisRequest(extraction, checker);
+        const { analysis: response, brands } = await analyzeSkin(request);
 
         if (brands) {
           setAvailableBrands(brands);
@@ -804,14 +768,7 @@ export default function ScanPage() {
 
       setComparisonLoading(true);
       try {
-        const recommendations = await apiPost<RecommendationItem[]>(
-          "/recommendations",
-          {
-            skin_lab: result.skin_lab,
-            brands: [brand],
-            top_n: 200,
-          },
-        );
+        const recommendations = await recommendForBrand(result.skin_lab, brand);
         comparisonCacheRef.current.set(brand, recommendations);
         if (comparisonRequestIdRef.current === requestId) {
           setComparisonResult(recommendations);

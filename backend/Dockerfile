@@ -12,11 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-dev.txt ./
+COPY backend/requirements.txt backend/requirements-dev.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-dev.txt
 
-COPY . .
+COPY backend/ .
+COPY app-version.json ./app-version.json
 
 EXPOSE 8000
 

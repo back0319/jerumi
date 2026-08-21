@@ -1,0 +1,80 @@
+{
+  "case_id": "regional-skin-with-colorchecker",
+  "description": "Four facial ROIs with redness and shadow outliers plus conservative ColorChecker correction.",
+  "input": {
+    "skin_region_groups": {
+      "lower_left_cheek": [
+        { "rgb": [196, 160, 142], "count": 72, "jitter": 3 },
+        { "rgb": [232, 137, 132], "count": 8, "jitter": 2 }
+      ],
+      "lower_right_cheek": [
+        { "rgb": [199, 163, 145], "count": 72, "jitter": 3 },
+        { "rgb": [239, 224, 213], "count": 8, "jitter": 1 }
+      ],
+      "below_lips": [
+        { "rgb": [188, 145, 135], "count": 68, "jitter": 3 },
+        { "rgb": [225, 116, 120], "count": 12, "jitter": 2 }
+      ],
+      "chin": [
+        { "rgb": [144, 112, 101], "count": 68, "jitter": 3 },
+        { "rgb": [194, 158, 143], "count": 12, "jitter": 2 }
+      ]
+    },
+    "checker_patches": [
+      { "reference_lab": [37.99, 13.56, 14.06], "measured_rgb": [120, 92, 82] },
+      { "reference_lab": [65.71, 18.13, 17.81], "measured_rgb": [186, 142, 128] },
+      { "reference_lab": [49.93, -4.88, -21.93], "measured_rgb": [87, 108, 132] },
+      { "reference_lab": [43.14, -13.1, 21.91], "measured_rgb": [91, 112, 75] },
+      { "reference_lab": [55.11, 8.84, -25.4], "measured_rgb": [126, 113, 154] },
+      { "reference_lab": [70.72, -33.4, -0.2], "measured_rgb": [92, 173, 157] }
+    ],
+    "foundations": [
+      { "id": 101, "brand": "Fixture A", "product_name": "Balance Base", "shade_code": "19N", "shade_name": "Porcelain", "L_value": 76.2, "a_value": 7.1, "b_value": 13.5, "hex_color": "#d9b9a6", "undertone": null },
+      { "id": 102, "brand": "Fixture A", "product_name": "Balance Base", "shade_code": "21N", "shade_name": "Light Beige", "L_value": 69.4, "a_value": 8.6, "b_value": 15.9, "hex_color": "#c7a18e", "undertone": null },
+      { "id": 103, "brand": "Fixture B", "product_name": "Tone Fluid", "shade_code": "23W", "shade_name": "Warm Sand", "L_value": 63.0, "a_value": 10.2, "b_value": 20.4, "hex_color": "#b88e72", "undertone": null },
+      { "id": 104, "brand": "Fixture B", "product_name": "Tone Fluid", "shade_code": "25C", "shade_name": "Cool Tan", "L_value": 56.5, "a_value": 15.4, "b_value": 13.0, "hex_color": "#a57569", "undertone": null }
+    ],
+    "top_n": 4
+  },
+  "expected": {
+    "correction_matrix": [
+      [1.03260588, -0.03125862, 0.06649837],
+      [-0.0993291, 1.04567251, 0.12042985],
+      [-0.11149142, -0.18582392, 1.37377431]
+    ],
+    "skin_lab": [70.47443471, 12.47741333, 16.37143697],
+    "skin_hex": "#cda38f",
+    "skin_lab_raw": [69.37093948, 10.55989146, 14.35560159],
+    "skin_hex_raw": "#c5a28f",
+    "method": "region-medoid",
+    "fallback_used": false,
+    "total_pixel_count": 320,
+    "valid_region_count": 4,
+    "region_pixel_counts": {
+      "lower_left_cheek": 80,
+      "lower_right_cheek": 80,
+      "below_lips": 80,
+      "chin": 80
+    },
+    "max_region_delta_e": 6.94799206,
+    "confidence": {
+      "score": 0.75,
+      "level": "보통",
+      "notes": [
+        "홍조/그림자 영향이 큰 ROI 제외: chin",
+        "ROI 간 색 차가 다소 관찰됩니다."
+      ]
+    },
+    "recommendations": [
+      { "id": 102, "delta_e": 3.589, "category": "뚜렷한 차이" },
+      { "id": 101, "delta_e": 6.362, "category": "차이 큼" },
+      { "id": 103, "delta_e": 7.17, "category": "차이 큼" },
+      { "id": 104, "delta_e": 12.389, "category": "차이 큼" }
+    ]
+  },
+  "tolerances": {
+    "lab_absolute": 0.000001,
+    "matrix_absolute": 0.000001,
+    "delta_e_absolute": 0.001
+  }
+}

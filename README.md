@@ -51,7 +51,10 @@ flowchart LR
 
 ## 검증과 현재 한계
 
-백엔드 회귀 테스트는 CIEDE2000 기준값, 밝기·홍조 이상치 처리, 여러 ROI의 대표색, ColorChecker 보정, 저조도 스와치 추출과 Storage 설정을 확인합니다. [evaluation](evaluation/README.md) 디렉터리는 ROI와 추천 결과를 사례별로 기록하는 평가 흐름을 제공합니다.
+백엔드 회귀 테스트는 고정된 합성 fixture의 RGB·LAB·CIEDE2000 추천 순서,
+밝기·홍조 이상치 처리, 여러 ROI의 대표색, ColorChecker 보정, 저조도
+스와치 추출과 Storage 실패 보상을 확인합니다. [evaluation](evaluation/README.md)
+디렉터리는 ROI와 추천 결과를 사례별로 기록하는 평가 흐름을 제공합니다.
 
 - 결과는 조명, 카메라 색 처리, 촬영 각도와 피부 상태의 영향을 받을 수 있습니다.
 - ColorChecker가 함께 촬영된 사진이 더 안정적인 보정에 유리합니다.
@@ -72,7 +75,7 @@ flowchart LR
 
 - [프로덕션 서비스](https://jerumi.vercel.app/) 배포
 - 피부 분석, 파운데이션 추천, 관리자 데이터 관리 워크플로 통합
-- 현재 릴리스: `v1.4.0`
+- 현재 릴리스: `v1.4.0` (`app-version.json` 기준)
 
 ## 관련 문서
 
