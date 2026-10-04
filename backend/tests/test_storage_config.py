@@ -9,18 +9,30 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.append(str(BACKEND_ROOT))
 
+ENDPOINT = "https://br-example.storage.c-3.ap-southeast-1.aws.neon.tech"
+
+
+def storage_settings(**overrides):
+    values = {
+        "AWS_ENDPOINT_URL_S3": ENDPOINT,
+        "AWS_ACCESS_KEY_ID": "nak_live_test",
+        "AWS_SECRET_ACCESS_KEY": "nsk_live_test",
+        "AWS_REGION": "ap-southeast-1",
+        "STORAGE_BUCKET": "foundation-swatches",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
 
 def load_storage_module():
-    supabase_stub = types.ModuleType("supabase")
-    supabase_stub.Client = object
-    supabase_stub.create_client = lambda *_args, **_kwargs: object()
+    boto3_stub = types.ModuleType("boto3")
+    boto3_stub.client = lambda *_args, **_kwargs: object()
+    botocore_stub = types.ModuleType("botocore")
+    botocore_config_stub = types.ModuleType("botocore.config")
+    botocore_config_stub.Config = lambda **_kwargs: object()
 
     config_stub = types.ModuleType("app.config")
-    config_stub.settings = SimpleNamespace(
-        SUPABASE_URL=None,
-        SUPABASE_SERVICE_ROLE_KEY=None,
-        SUPABASE_STORAGE_BUCKET=None,
-    )
+    config_stub.settings = storage_settings()
 
     module_name = "_storage_config_under_test"
     module_path = BACKEND_ROOT / "app" / "services" / "storage.py"
@@ -29,28 +41,23 @@ def load_storage_module():
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
 
-    original_supabase = sys.modules.get("supabase")
-    original_config = sys.modules.get("app.config")
-    original_test_module = sys.modules.get(module_name)
-
-    sys.modules["supabase"] = supabase_stub
-    sys.modules["app.config"] = config_stub
-    sys.modules[module_name] = module
+    stubs = {
+        "boto3": boto3_stub,
+        "botocore": botocore_stub,
+        "botocore.config": botocore_config_stub,
+        "app.config": config_stub,
+        module_name: module,
+    }
+    originals = {name: sys.modules.get(name) for name in stubs}
+    sys.modules.update(stubs)
     try:
         spec.loader.exec_module(module)
     finally:
-        if original_supabase is None:
-            sys.modules.pop("supabase", None)
-        else:
-            sys.modules["supabase"] = original_supabase
-        if original_config is None:
-            sys.modules.pop("app.config", None)
-        else:
-            sys.modules["app.config"] = original_config
-        if original_test_module is None:
-            sys.modules.pop(module_name, None)
-        else:
-            sys.modules[module_name] = original_test_module
+        for name, original in originals.items():
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
 
     return module
 
@@ -60,41 +67,41 @@ class StorageConfigTests(unittest.TestCase):
         self.storage = load_storage_module()
 
     def test_storage_config_removes_bucket_bom_before_validation(self) -> None:
-        self.storage.settings = SimpleNamespace(
-            SUPABASE_URL=" https://example.supabase.co/ ",
-            SUPABASE_SERVICE_ROLE_KEY=" service-role-key ",
-            SUPABASE_STORAGE_BUCKET="\ufefffoundation-swatches",
+        self.storage.settings = storage_settings(
+            AWS_ENDPOINT_URL_S3=f" {ENDPOINT}/ ",
+            AWS_SECRET_ACCESS_KEY=" nsk_live_test ",
+            STORAGE_BUCKET="﻿foundation-swatches",
         )
 
-        self.assertEqual(
-            self.storage._require_storage_config(),
-            (
-                "https://example.supabase.co",
-                "service-role-key",
-                "foundation-swatches",
-            ),
-        )
+        config = self.storage._require_storage_config()
+
+        self.assertEqual(config.endpoint_url, ENDPOINT)
+        self.assertEqual(config.secret_access_key, "nsk_live_test")
+        self.assertEqual(config.bucket, "foundation-swatches")
 
     def test_storage_config_still_rejects_invalid_bucket_names(self) -> None:
-        self.storage.settings = SimpleNamespace(
-            SUPABASE_URL="https://example.supabase.co",
-            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
-            SUPABASE_STORAGE_BUCKET="Foundation_Swatches",
-        )
+        self.storage.settings = storage_settings(STORAGE_BUCKET="Foundation_Swatches")
 
         with self.assertRaises(self.storage.StorageConfigError):
             self.storage._require_storage_config()
 
-    def test_resolve_public_asset_keeps_bucket_from_existing_url(self) -> None:
-        self.storage.settings = SimpleNamespace(
-            SUPABASE_URL="https://example.supabase.co",
-            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
-            SUPABASE_STORAGE_BUCKET="new-foundation-swatches",
+    def test_storage_config_requires_credentials(self) -> None:
+        self.storage.settings = storage_settings(AWS_SECRET_ACCESS_KEY=None)
+
+        with self.assertRaises(self.storage.StorageConfigError):
+            self.storage._require_storage_config()
+
+    def test_public_url_uses_path_style_bucket(self) -> None:
+        self.assertEqual(
+            self.storage._build_public_url("swatches/brand/shade 1.jpg"),
+            f"{ENDPOINT}/foundation-swatches/swatches/brand/shade%201.jpg",
         )
 
+    def test_resolve_public_asset_keeps_bucket_from_existing_url(self) -> None:
+        self.storage.settings = storage_settings(STORAGE_BUCKET="new-foundation-swatches")
+
         asset = self.storage.resolve_public_asset(
-            "https://example.supabase.co/storage/v1/object/public/"
-            "old-foundation-swatches/swatches/brand/shade%201.jpg"
+            f"{ENDPOINT}/old-foundation-swatches/swatches/brand/shade%201.jpg"
         )
 
         self.assertIsNotNone(asset)
@@ -103,46 +110,64 @@ class StorageConfigTests(unittest.TestCase):
         self.assertEqual(asset.object_path, "swatches/brand/shade 1.jpg")
 
     def test_resolve_public_asset_ignores_external_urls(self) -> None:
-        self.storage.settings = SimpleNamespace(
-            SUPABASE_URL="https://example.supabase.co",
-            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
-            SUPABASE_STORAGE_BUCKET="foundation-swatches",
-        )
-
         self.assertIsNone(
             self.storage.resolve_public_asset(
                 "https://cdn.example.test/foundation-swatches/shade.jpg"
             )
         )
+        self.assertIsNone(
+            self.storage.resolve_public_asset(
+                "https://example.supabase.co/storage/v1/object/public/"
+                "foundation-swatches/swatches/brand/shade.jpg"
+            )
+        )
+
+    def test_upload_swatch_image_puts_object_and_returns_public_url(self) -> None:
+        calls = []
+
+        class S3Client:
+            def put_object(self, **kwargs):
+                calls.append(kwargs)
+
+        self.storage.get_storage_client = lambda: S3Client()
+
+        result = self.storage.upload_swatch_image(
+            b"image-bytes",
+            brand="Brand A",
+            shade_name="21N Light",
+            content_type="image/jpeg; charset=binary",
+            original_filename="photo.jpg",
+        )
+
+        self.assertEqual(result.bucket, "foundation-swatches")
+        self.assertTrue(result.object_path.startswith("swatches/brand-a/21n-light-"))
+        self.assertEqual(
+            result.public_url,
+            f"{ENDPOINT}/foundation-swatches/{result.object_path}",
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["Bucket"], "foundation-swatches")
+        self.assertEqual(calls[0]["Key"], result.object_path)
+        self.assertEqual(calls[0]["Body"], b"image-bytes")
+        self.assertEqual(calls[0]["ContentType"], "image/jpeg")
 
     def test_delete_public_asset_is_idempotent_and_uses_resolved_bucket(self) -> None:
-        self.storage.settings = SimpleNamespace(
-            SUPABASE_URL="https://example.supabase.co",
-            SUPABASE_SERVICE_ROLE_KEY="service-role-key",
-            SUPABASE_STORAGE_BUCKET="foundation-swatches",
-        )
         removed = []
 
-        class BucketClient:
-            def remove(self, paths):
-                removed.append(paths)
+        class S3Client:
+            def delete_object(self, **kwargs):
+                removed.append(kwargs)
 
-        class StorageClient:
-            def from_(self, bucket):
-                removed.append(bucket)
-                return BucketClient()
-
-        self.storage.get_storage_client = lambda: SimpleNamespace(storage=StorageClient())
+        self.storage.get_storage_client = lambda: S3Client()
 
         deleted = self.storage.delete_public_asset(
-            "https://example.supabase.co/storage/v1/object/public/"
-            "foundation-swatches/swatches/brand/shade.jpg"
+            f"{ENDPOINT}/foundation-swatches/swatches/brand/shade.jpg"
         )
 
         self.assertTrue(deleted)
         self.assertEqual(
             removed,
-            ["foundation-swatches", ["swatches/brand/shade.jpg"]],
+            [{"Bucket": "foundation-swatches", "Key": "swatches/brand/shade.jpg"}],
         )
 
 

@@ -18,6 +18,9 @@ def normalize_database_url(url: str) -> str:
     parts = urlsplit(normalized)
     query_items = []
     for key, value in parse_qsl(parts.query, keep_blank_values=True):
+        if key == "channel_binding":
+            # libpq-only option in Neon URLs; asyncpg would send it as a server setting.
+            continue
         if key == "sslmode":
             query_items.append(("ssl", value))
         else:
@@ -36,10 +39,11 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 480
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin1234"
-    CRON_SECRET: str | None = None
-    SUPABASE_URL: str | None = None
-    SUPABASE_SERVICE_ROLE_KEY: str | None = None
-    SUPABASE_STORAGE_BUCKET: str | None = None
+    AWS_ENDPOINT_URL_S3: str | None = None
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
+    AWS_REGION: str | None = None
+    STORAGE_BUCKET: str | None = None
     CORS_ORIGINS: str = (
         "http://localhost:3000,"
         "http://127.0.0.1:3000,"

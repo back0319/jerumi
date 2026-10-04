@@ -1,6 +1,6 @@
 # Jerumi Build & Deployment Guide
 
-이 문서는 Jerumi의 로컬 실행, 검증, Vercel Services와 Supabase 배포를 관리하는 canonical 문서입니다.
+이 문서는 Jerumi의 로컬 실행, 검증, Vercel Services와 Neon 배포를 관리하는 canonical 문서입니다.
 
 ## 배포 아키텍처
 
@@ -8,8 +8,8 @@
 flowchart LR
     A["Browser"] --> B["Vercel web<br/>Next.js"]
     B -->|/api| C["Vercel api<br/>FastAPI"]
-    C --> D["Supabase Postgres"]
-    C --> E["Supabase Storage"]
+    C --> D["Neon Postgres"]
+    C --> E["Neon Object Storage"]
 ```
 
 Vercel Services의 `web` 서비스가 사용자 화면과 브라우저 전처리를 담당하고, `api` 서비스가 분석·추천·관리 API를 제공합니다. 제품 데이터는 Postgres에, 스와치 이미지는 Storage에 저장합니다.
@@ -19,7 +19,7 @@ Vercel Services의 `web` 서비스가 사용자 화면과 브라우저 전처리
 - Node.js 20 LTS 이상과 npm
 - Python 3.11 이상
 - Docker Desktop과 Docker Compose(통합 로컬 실행 시)
-- Vercel 및 Supabase 프로젝트(프로덕션 배포 시)
+- Vercel 및 Neon 프로젝트(프로덕션 배포 시)
 
 ## 로컬 실행
 
@@ -71,15 +71,16 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 | `JWT_SECRET` | Secret | 관리자 인증 토큰 서명 키 |
 | `ADMIN_USERNAME` | Secret | 관리자 계정 이름 |
 | `ADMIN_PASSWORD` | Secret | 관리자 계정 비밀번호 |
-| `CRON_SECRET` | Secret | Vercel Cron 요청을 인증하는 서버 전용 무작위 값 |
-| `SUPABASE_URL` | Server only | Supabase 프로젝트 URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Storage 관리용 service role key |
-| `SUPABASE_STORAGE_BUCKET` | Server only | 파운데이션 이미지 버킷 |
+| `AWS_ENDPOINT_URL_S3` | Server only | Neon 브랜치의 Object Storage S3 endpoint |
+| `AWS_ACCESS_KEY_ID` | Server only | Neon storage credential의 `token_id` |
+| `AWS_SECRET_ACCESS_KEY` | Secret | Neon storage credential의 `s3_secret_access_key` |
+| `AWS_REGION` | Server only | Object Storage region (예: `ap-southeast-1`) |
+| `STORAGE_BUCKET` | Server only | 파운데이션 이미지 버킷 |
 | `CORS_ORIGINS` | Server only | 허용할 브라우저 출처 목록 |
 | `CORS_ORIGIN_REGEX` | Server only | Preview 도메인용 선택적 정규식 |
 | `NEXT_PUBLIC_API_URL` | Browser | 프론트엔드와 API를 분리 실행할 때의 API 주소 |
 
-`SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `JWT_SECRET`, 관리자 계정 값은 브라우저 번들이나 Git 기록에 넣지 않습니다. 운영 환경에서는 `AUTO_CREATE_TABLES=false`를 유지하고 마이그레이션을 별도로 관리합니다.
+`AWS_SECRET_ACCESS_KEY`, `JWT_SECRET`, 관리자 계정 값은 브라우저 번들이나 Git 기록에 넣지 않습니다. 운영 환경에서는 `AUTO_CREATE_TABLES=false`를 유지하고 마이그레이션을 별도로 관리합니다.
 
 ## 검증과 빌드
 
@@ -128,57 +129,48 @@ origin에서 서비스하므로 Vercel Services에서는 `NEXT_PUBLIC_API_URL`�
 상대 `/api` 경로를 사용합니다. 별도 API를 연결할 때만 절대 URL을 설정하며,
 앞뒤 공백과 마지막 `/`는 프론트 API 모듈이 정규화합니다.
 
-### Supabase keepalive Cron
-
-루트의 `vercel.json`은 매일 `03:00 UTC`에 `/api/cron/supabase-keepalive`를 호출합니다. 이 FastAPI endpoint는 Vercel이 `CRON_SECRET`으로 생성한 Bearer 인증을 확인한 뒤 `foundations` 테이블에서 ID 하나만 읽습니다. 성공 응답은 데이터 없이 `{ "ok": true }`만 반환합니다.
-
-Cron은 Production 배포에서만 실행됩니다. Vercel Project Settings의 Production 환경에 32바이트 이상의 무작위 `CRON_SECRET`을 등록하고, Vercel Cron 목록과 Function 로그에서 실행 결과를 확인합니다. 이 작업은 Free 프로젝트의 활동을 유지하기 위한 운영 보조 장치이며 비정지 SLA를 제공하지 않습니다.
-
 ### 리팩터링 Preview
 
 1. `refactor/jerumi-safety-net` 브랜치를 push하고 Draft PR을 엽니다.
 2. DB 변경 전 단계는 Vercel Preview에서 빌드와 읽기 경로만 확인합니다.
-3. DB·Storage 변경 단계는 운영 프로젝트가 아닌 격리 Supabase 프로젝트의
-   환경 변수를 해당 Git 브랜치의 Preview 환경에만 설정합니다.
-4. `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-   `SUPABASE_STORAGE_BUCKET`, 관리자 비밀값을 모두 같은 격리 환경으로 맞춥니다.
+3. DB·Storage 변경 단계는 운영 `main`이 아닌 Neon 자식 브랜치를 만들고, 그
+   브랜치의 환경 변수를 해당 Git 브랜치의 Preview 환경에만 설정합니다. 자식
+   브랜치는 DB와 bucket을 copy-on-write로 상속하므로 운영 데이터에 영향이 없습니다.
+4. `DATABASE_URL`, `AWS_ENDPOINT_URL_S3`, storage credential, `STORAGE_BUCKET`,
+   관리자 비밀값을 모두 같은 브랜치로 맞춥니다.
 5. Preview 승인 전에는 main에 병합하지 않습니다.
 
-무료 Supabase 프로젝트 슬롯이 없을 때 기존 프로젝트를 pause/delete하지
-않습니다. 유료 Supabase branch는 시간당 비용을 다시 확인하고 별도 승인을
-받은 경우에만 생성합니다. 사용자가 기존 Jerumi 프로젝트 사용을 명시적으로
-승인한 경우에는 적용 전 행 수와 스키마를 읽기 전용으로 기록하고, 운영 seed를
-실행하지 않으며, migration과 임시 검증 데이터만 사용합니다.
-
-## Supabase 설정
+## Neon 설정
 
 ### Postgres
 
-- `DATABASE_URL`에는 Supabase Postgres 연결 문자열을 설정합니다.
-- Session pooler와 TLS 연결을 권장합니다.
-- `supabase/migrations/`가 테이블, RLS와 데이터 정리 책임을 가집니다.
-- `public` 테이블은 RLS를 켜고 `anon`, `authenticated` 직접 권한을 부여하지
-  않습니다. 현재 API는 서버의 DB 연결만 사용합니다.
+- `DATABASE_URL`에는 Neon의 pooled 연결 문자열(`-pooler` 호스트)을 설정합니다.
+  Neon이 주는 `postgresql://...?sslmode=require&channel_binding=require` 형식을
+  그대로 넣어도 backend가 asyncpg용으로 정규화합니다(`sslmode`→`ssl`,
+  `channel_binding` 제거).
+- `db/migrations/`가 테이블과 인덱스 정의를 가집니다. 새 브랜치나 프로젝트에는
+  번호 순서대로 적용합니다.
 
-### Storage
+  ```bash
+  psql "$DATABASE_URL" -f db/migrations/0001_baseline_foundations_and_storage_cleanup.sql
+  ```
 
-1. `supabase/config.toml`의 `foundation-swatches` 정의와
-   `supabase/migrations/*_configure_foundation_swatches_bucket.sql`을 같은 bucket
-   이름, 공개 여부, 20MiB 제한과 MIME 허용 목록으로 유지합니다. 로컬 설정은
-   `config.toml`, 원격 적용 책임은 migration에 있습니다.
-2. `SUPABASE_STORAGE_BUCKET=foundation-swatches`로 설정합니다.
-3. FastAPI만 service role key를 사용해 Storage API로 업로드와 삭제를 수행합니다.
-4. 브라우저에는 public image URL만 반환합니다.
+- API만 DB 소유자 role로 접속하며, Data API는 사용하지 않습니다.
+- Neon compute는 유휴 시 scale-to-zero 되었다가 첫 요청에 자동으로 깨어나므로
+  별도의 keepalive 작업이 필요 없습니다.
+
+### Object Storage
+
+1. Neon Console의 **Object storage** 탭(또는 `neon buckets create
+   foundation-swatches --access-level public_read`)으로 `foundation-swatches`
+   bucket을 `public_read`로 만듭니다.
+2. `storage:read`, `storage:write` scope의 credential을 발급해
+   `AWS_ACCESS_KEY_ID`(token_id)와 `AWS_SECRET_ACCESS_KEY`로 설정합니다.
+   비밀값은 발급 시 한 번만 표시됩니다.
+3. FastAPI만 credential을 사용해 S3 API로 업로드와 삭제를 수행합니다.
+4. 브라우저에는 `{AWS_ENDPOINT_URL_S3}/{bucket}/{key}` 형식의 공개 URL만 반환합니다.
 5. DB 삭제 트랜잭션은 `storage_cleanup_jobs` outbox를 함께 기록합니다. Storage
    삭제 실패는 `POST /api/foundations/storage-cleanups/retry`로 멱등 재시도합니다.
-
-로컬 Supabase를 사용할 때는 Docker Desktop을 실행한 뒤 다음을 확인합니다.
-
-```bash
-npx supabase start
-npx supabase db reset
-npx supabase seed buckets
-```
 
 ## 배포 후 점검
 
@@ -194,7 +186,7 @@ npx supabase seed buckets
 ## 운영 제약과 장애 대응
 
 - 분석 품질은 촬영 조건과 입력 이미지에 영향을 받습니다.
-- 데이터베이스 연결 실패 시 Supabase URL, pooler 모드, TLS query를 먼저 확인합니다.
-- Storage 오류는 bucket 이름의 보이지 않는 문자, bucket 공개 설정과 service role key를 확인합니다.
+- 데이터베이스 연결 실패 시 Neon 연결 문자열, pooler 호스트, TLS query를 먼저 확인합니다.
+- Storage 오류는 bucket 이름의 보이지 않는 문자, bucket 접근 수준(`public_read`), credential scope와 브랜치 계보를 확인합니다.
 - API cold start가 길면 운영 의존성과 `AUTO_CREATE_TABLES` 설정을 점검합니다.
 - 문제가 있는 배포는 Vercel의 이전 정상 배포를 Production으로 승격해 롤백합니다.

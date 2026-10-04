@@ -67,7 +67,7 @@ flowchart LR
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | 얼굴 분석 | MediaPipe Face Mesh, Canvas API |
 | Backend | FastAPI, SQLAlchemy Async, NumPy, Pillow, OpenCV |
-| Data | Supabase Postgres, Supabase Storage |
+| Data | Neon Postgres, Neon Object Storage |
 | Deployment | Vercel Services |
 | Monitoring | Vercel Analytics, Speed Insights |
 

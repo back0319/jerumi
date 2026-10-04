@@ -16,3 +16,5 @@ evaluation/records/*
 !evaluation/records/.gitkeep
 .claude/
 *.tsbuildinfo
+.env*
+!.env.example
