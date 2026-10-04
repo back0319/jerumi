@@ -42,9 +42,50 @@ const CHECKER_ACCEPTED_SCORE = 70;
 const EXPECTED_CHECKER_PATCH_COUNT = 24;
 let faceMeshModulePromise: Promise<any> | null = null;
 
+let faceMeshInstancePromise: Promise<any> | null = null;
+let faceMeshInstance: any = null;
+
 function loadFaceMeshModule() {
   faceMeshModulePromise ??= import("@mediapipe/face_mesh");
   return faceMeshModulePromise;
+}
+
+// Downloading the model and compiling the WASM graph takes several seconds
+// on the first run, so one initialized instance is shared across analyses
+// and warmed up while the user is still choosing a photo.
+function getFaceMesh(): Promise<any> {
+  faceMeshInstancePromise ??= (async () => {
+    const { FaceMesh } = await loadFaceMeshModule();
+    const faceMesh = new FaceMesh({
+      locateFile: (file: string) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    await faceMesh.initialize();
+    faceMeshInstance = faceMesh;
+    return faceMesh;
+  })().catch((err) => {
+    faceMeshInstancePromise = null;
+    throw err;
+  });
+  return faceMeshInstancePromise;
+}
+
+// A failed send can leave the WASM graph unusable; drop the shared instance so
+// the next analysis builds a fresh one instead of always falling back.
+function discardFaceMesh(faceMesh: any) {
+  if (faceMeshInstance === faceMesh) {
+    faceMeshInstance = null;
+    faceMeshInstancePromise = null;
+  }
+  void Promise.resolve()
+    .then(() => faceMesh.close())
+    .catch(() => undefined);
 }
 
 const MAX_PROCESSING_DIMENSION = 960;
@@ -670,17 +711,10 @@ export default function ScanPage() {
         fallbackExtract(canvas);
       }, FACE_MESH_TIMEOUT_MS);
 
-      const { FaceMesh } = await loadFaceMeshModule();
-      const faceMesh = new FaceMesh({
-        locateFile: (file: string) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-      });
-      faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: false,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      });
+      const faceMesh = await getFaceMesh();
+      // Each photo is unrelated to the previous one; drop tracking state so
+      // landmarks come from fresh detection rather than the last image.
+      faceMesh.reset();
 
       faceMesh.onResults((results: any) => {
         if (detectionCompletedRef.current) return;
@@ -730,7 +764,12 @@ export default function ScanPage() {
         );
       });
 
-      await faceMesh.send({ image: canvas });
+      try {
+        await faceMesh.send({ image: canvas });
+      } catch (err) {
+        discardFaceMesh(faceMesh);
+        throw err;
+      }
     } catch (err) {
       console.warn(
         "MediaPipe Face Mesh 로딩 실패, 하부 중심 fallback 영역 사용:",
@@ -828,7 +867,7 @@ export default function ScanPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadFaceMeshModule().catch(() => undefined);
+      void getFaceMesh().catch(() => undefined);
     }, 600);
     return () => window.clearTimeout(timer);
   }, []);
